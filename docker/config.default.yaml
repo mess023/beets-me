@@ -1,0 +1,90 @@
+# Default beets configuration for the singles pipeline container.
+# Copied to /config/config.yaml on first start; edit there (or via the web UI
+# at http://<host>:8337/singles/plugins).
+
+directory: /music/library
+library: /config/library.db
+
+# bandcamp and beatport4 are installed but off: enable them on the plugins page
+# (beatport4 needs a Beatport login and uses an unofficial API).
+plugins:
+  - musicbrainz
+  - discogs
+  - deezer
+  - chroma
+  - fromfilename
+  - ftintitle
+  - fetchart
+  - embedart
+  - autobpm
+  - replaygain
+  - convert
+  - scrub
+  - web
+  - singles
+
+import:
+  move: yes
+  write: yes
+  # unmatched files are left in the inbox for manual handling (quiet mode)
+  quiet_fallback: skip
+  log: /config/import.log
+
+paths:
+  # "July 2025/Artist - Title (Remixer Remix).aiff"
+  singleton: $month_folder/$artist - $title%sunique{}
+  default: $month_folder/$artist - $title%sunique{}
+  comp: $month_folder/$artist - $title%sunique{}
+
+singles:
+  inbox: /music/inbox
+  batch_size: 20
+  auto_key: yes
+  auto_art: yes
+
+convert:
+  auto: yes
+  format: aiff
+  never_convert_lossy_files: yes
+  delete_originals: yes
+  formats:
+    aiff:
+      command: to-aiff $source $dest
+      extension: aiff
+
+replaygain:
+  auto: yes
+  backend: ffmpeg
+  overwrite: yes
+  targetlevel: 89
+
+autobpm:
+  auto: yes
+
+fetchart:
+  auto: yes
+  sources:
+    - coverart
+    - itunes
+    - cover_art_url
+    - amazon
+    - albumart
+    - spotify
+
+embedart:
+  auto: yes
+  remove_art_file: yes
+
+discogs:
+  user_token: ""
+  index_tracks: yes
+
+chroma:
+  auto: yes
+
+musicbrainz:
+  search_limit: 10
+
+web:
+  host: 0.0.0.0
+  port: 8337

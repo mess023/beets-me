@@ -1,0 +1,10 @@
+#!/bin/sh
+# Transcode $1 to AIFF at $2, keeping the source bit depth:
+# 16-bit -> pcm_s16be, anything higher -> pcm_s24be. Used by the convert plugin.
+set -e
+bits=$(ffprobe -v error -select_streams a:0 \
+    -show_entries stream=bits_per_raw_sample,bits_per_sample -of csv=p=0 "$1" \
+    | tr ',' '\n' | grep -v '^0$' | grep -v '^$' | sort -n | tail -1)
+codec=pcm_s16be
+[ "${bits:-16}" -gt 16 ] && codec=pcm_s24be
+exec ffmpeg -loglevel error -i "$1" -y -vn -map_metadata 0 -c:a "$codec" -write_id3v2 1 "$2"

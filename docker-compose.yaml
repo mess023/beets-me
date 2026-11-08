@@ -1,0 +1,24 @@
+# beets singles pipeline for TrueNAS (Apps -> Custom App -> Install via YAML).
+# Adjust the three host paths under `volumes` and PUID/PGID (TrueNAS apps user
+# is usually 568). Web UI: http://<truenas-ip>:8337/singles/
+services:
+  beets:
+    image: ghcr.io/mess023/beets-me:test-singles-pipeline
+    container_name: beets-singles
+    environment:
+      PUID: "568"
+      PGID: "568"
+      TZ: Europe/Amsterdam
+    ports:
+      - "8337:8337"
+    volumes:
+      - /mnt/tank/apps/beets/config:/config
+      - /mnt/tank/music/inbox:/music/inbox
+      - /mnt/tank/music/library:/music/library
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8337/stats"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
