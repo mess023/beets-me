@@ -4,10 +4,11 @@ detection, cover art for singletons and a small web UI to run batches.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from datetime import datetime
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from beets import plugins
 from beets.dbcore import types
@@ -25,8 +26,34 @@ MONTHS = (
 
 KEYS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 # Krumhansl-Schmuckler key profiles (major / minor), index 0 = tonic.
-_MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
-_MINOR = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+_MAJOR = (
+    6.35,
+    2.23,
+    3.48,
+    2.33,
+    4.38,
+    4.09,
+    2.52,
+    5.19,
+    2.39,
+    3.66,
+    2.29,
+    2.88,
+)
+_MINOR = (
+    6.33,
+    2.68,
+    3.52,
+    5.38,
+    2.60,
+    3.53,
+    2.54,
+    4.75,
+    3.98,
+    2.69,
+    3.34,
+    3.17,
+)
 # Camelot wheel: standard notation -> DJ notation (Rekordbox/Traktor style).
 CAMELOT = {
     "B": "1B", "F#": "2B", "C#": "3B", "G#": "4B", "D#": "5B", "A#": "6B",
@@ -84,7 +111,7 @@ def detect_key(path: str) -> str | None:
 
 
 class SinglesPlugin(BeetsPlugin):
-    item_types = {"creation_date": types.DATE}
+    item_types: ClassVar[dict[str, types.Type]] = {"creation_date": types.DATE}
 
     def __init__(self) -> None:
         super().__init__()
@@ -109,7 +136,9 @@ class SinglesPlugin(BeetsPlugin):
 
     # --- creation date -> "July 2025" -------------------------------------
 
-    def _remember_created(self, session: ImportSession, task: ImportTask):
+    def _remember_created(
+        self, session: ImportSession, task: ImportTask
+    ) -> None:
         # Runs before convert replaces the file, so the original's date wins.
         for item in task.items:
             if not item.get("creation_date"):
@@ -133,7 +162,9 @@ class SinglesPlugin(BeetsPlugin):
                 item.initial_key = key
                 item.camelot_key = CAMELOT.get(key, "")
                 item.store()
-                self._log.info("Key for {}: {} ({})", item, key, item.camelot_key)
+                self._log.info(
+                    "Key for {}: {} ({})", item, key, item.camelot_key
+                )
 
     # --- cover art for singletons -------------------------------------------
 
@@ -161,7 +192,5 @@ class SinglesPlugin(BeetsPlugin):
         art.embed_item(
             self._log, item, candidate.path, maxwidth=fetchart.maxwidth
         )
-        try:
+        with contextlib.suppress(OSError):
             os.remove(candidate.path)
-        except OSError:
-            pass

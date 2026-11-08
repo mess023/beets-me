@@ -179,7 +179,7 @@ def _run(batch_size: int, loop: bool) -> None:
 
 
 @bp.route("/")
-def dashboard():
+def dashboard() -> str:
     files = inbox_files()
     return flask.render_template(
         "singles.html",
@@ -192,7 +192,7 @@ def dashboard():
 
 
 @bp.route("/start", methods=["POST"])
-def start():
+def start() -> flask.Response:
     with _lock:
         if STATE["status"] != "running":
             form = flask.request.form
@@ -209,7 +209,7 @@ def start():
 
 
 @bp.route("/stop", methods=["POST"])
-def stop():
+def stop() -> flask.Response:
     STATE["stop"] = True
     if proc := STATE["proc"]:
         proc.terminate()
@@ -217,7 +217,7 @@ def stop():
 
 
 @bp.route("/status.json")
-def status():
+def status() -> flask.Response:
     return flask.jsonify(
         status=STATE["status"],
         done=STATE["done"],
@@ -229,7 +229,7 @@ def status():
 
 
 @bp.route("/plugins", methods=["GET", "POST"])
-def plugins_page():
+def plugins_page() -> str:
     cfg = load_yaml()
     saved = False
     if flask.request.method == "POST":

@@ -16,7 +16,8 @@ def test_key_from_chroma_major_and_minor():
 
 def test_camelot_wheel_covers_all_keys():
     assert len(CAMELOT) == 24
-    assert CAMELOT["Am"] == "8A" and CAMELOT["C"] == "8B"
+    assert CAMELOT["Am"] == "8A"
+    assert CAMELOT["C"] == "8B"
 
 
 def test_apply_plugin_form_toggles_and_keeps_values():
@@ -24,7 +25,11 @@ def test_apply_plugin_form_toggles_and_keeps_values():
         "plugins": "musicbrainz fetchart inline",
         "discogs": {"user_token": "old"},
     }
-    form = {"on:discogs": "1", "discogs.user_token": "", "singles.batch_size": "5"}
+    form = {
+        "on:discogs": "1",
+        "discogs.user_token": "",
+        "singles.batch_size": "5",
+    }
     out = apply_plugin_form(cfg, form)
     assert out["plugins"] == ["inline", "discogs", "singles", "web"]
     assert out["discogs"]["user_token"] == "old"  # empty input keeps value
