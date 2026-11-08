@@ -67,6 +67,13 @@ PLUGINS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
     "web": ("Deze webinterface", []),
 }
 ALWAYS_ON = {"web", "singles"}
+# Plugins that prompt interactively (and so hang a quiet batch) when this
+# credential is missing: only enable them once it is set.
+NEEDS_CREDENTIAL = {
+    "discogs": "user_token",
+    "spotify": "client_id",
+    "beatport4": "username",
+}
 
 bp = flask.Blueprint(
     "singles", __name__, url_prefix="/singles", template_folder="templates"
@@ -111,9 +118,6 @@ def enabled_plugins(cfg: dict) -> list[str]:
 
 def apply_plugin_form(cfg: dict, form: dict) -> dict:
     """Pure helper: toggle plugins and store settings from the form."""
-    on = {n for n in PLUGINS if form.get(f"on:{n}")} | ALWAYS_ON
-    others = [n for n in enabled_plugins(cfg) if n not in PLUGINS]
-    cfg["plugins"] = others + [n for n in PLUGINS if n in on]
     for name, (_, fields) in PLUGINS.items():
         for key, _, _ in fields:
             value = (form.get(f"{name}.{key}") or "").strip()
@@ -122,6 +126,12 @@ def apply_plugin_form(cfg: dict, form: dict) -> dict:
             section = cfg.get(name) or {}
             section[key] = int(value) if value.isdigit() else value
             cfg[name] = section
+    on = {n for n in PLUGINS if form.get(f"on:{n}")} | ALWAYS_ON
+    for name, key in NEEDS_CREDENTIAL.items():
+        if not (cfg.get(name) or {}).get(key):
+            on.discard(name)
+    others = [n for n in enabled_plugins(cfg) if n not in PLUGINS]
+    cfg["plugins"] = others + [n for n in PLUGINS if n in on]
     return cfg
 
 

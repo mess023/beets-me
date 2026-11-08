@@ -34,3 +34,8 @@ def test_apply_plugin_form_toggles_and_keeps_values():
     assert out["plugins"] == ["inline", "discogs", "singles", "web"]
     assert out["discogs"]["user_token"] == "old"  # empty input keeps value
     assert out["singles"]["batch_size"] == 5
+
+
+def test_apply_plugin_form_refuses_plugin_without_credential():
+    out = apply_plugin_form({}, {"on:discogs": "1", "on:deezer": "1"})
+    assert out["plugins"] == ["deezer", "singles", "web"]

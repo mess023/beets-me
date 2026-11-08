@@ -5,11 +5,11 @@
 directory: /music/library
 library: /config/library.db
 
-# bandcamp and beatport4 are installed but off: enable them on the plugins page
-# (beatport4 needs a Beatport login and uses an unofficial API).
+# discogs, bandcamp and beatport4 are installed but off: enable them on the
+# plugins page once their credentials are filled in (discogs needs a personal
+# token, beatport4 a Beatport login and uses an unofficial API).
 plugins:
   - musicbrainz
-  - discogs
   - deezer
   - chroma
   - fromfilename
@@ -74,10 +74,6 @@ fetchart:
 embedart:
   auto: yes
   remove_art_file: yes
-
-discogs:
-  user_token: ""
-  index_tracks: yes
 
 chroma:
   auto: yes
