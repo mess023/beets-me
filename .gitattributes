@@ -1,0 +1,3 @@
+docker/entrypoint.sh text eol=lf
+docker/to-aiff text eol=lf
+docker/Dockerfile text eol=lf
