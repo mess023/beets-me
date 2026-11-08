@@ -8,10 +8,12 @@ ENV PYTHONUNBUFFERED=1 \
     PUID=1000 \
     PGID=1000
 
-# ffmpeg: convert + replaygain (ebur128); fpcalc: chroma/AcoustID; gosu: drop root.
+# ffmpeg: convert + replaygain (ebur128); libchromaprint1: chroma/AcoustID via
+# pyacoustid + audioread (Debian's fpcalc binary fails with "Protocol not
+# found" against ffmpeg 7, so it is deliberately not installed); gosu: drop root.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ffmpeg libchromaprint-tools gosu curl ca-certificates tini \
+        ffmpeg libchromaprint1 gosu curl ca-certificates tini \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /src
