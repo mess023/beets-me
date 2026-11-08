@@ -119,6 +119,7 @@ databases. They share the following configuration options:
     replaygain
     rewrite
     scrub
+    singles
     smartplaylist
     sonosupdate
     spotify
@@ -370,6 +371,9 @@ Miscellaneous
 
 :doc:`ihate <ihate>`
     Automatically skip albums and tracks during the import process.
+
+:doc:`singles <singles>`
+    Batch pipeline and web UI for loose tracks: month folders, key, cover art.
 
 :doc:`info <info>`
     Print music files' tags to the console.

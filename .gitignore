@@ -97,3 +97,6 @@ pyrightconfig.json
 
 # Pyrefly
 pyrefly.toml
+
+# local scratch for this session
+.work/

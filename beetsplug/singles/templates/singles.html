@@ -1,0 +1,46 @@
+{% extends "_layout.html" %}{% set page='dashboard' %}
+{% block body %}
+<div class="card">
+  <h2>Batch verwerken</h2>
+  <p class="muted">Inbox: <code>{{ inbox }}</code> — <span id="inbox_count">{{ inbox_count }}</span> audiobestanden.
+  Elke batch draait <code>beet import -s -q</code>
+  (<abbr title="singleton: los nummer zonder album">-s</abbr>,
+   <abbr title="quiet: zonder vragen; bij twijfel wordt het bestand overgeslagen en blijft het in de inbox">-q</abbr>).</p>
+  <form method="post" action="{{ url_for('singles.start') }}" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+    <label>Batchgrootte <input type="number" name="batch_size" min="1" value="{{ batch_size }}" style="width:5rem"></label>
+    <label><input type="checkbox" name="loop"> doorgaan tot de inbox leeg is</label>
+    <label><input type="checkbox" name="reset"> overgeslagen bestanden opnieuw proberen</label>
+    <button type="submit" id="start" {{ 'disabled' if state.status=='running' }}>Start</button>
+  </form>
+  <form method="post" action="{{ url_for('singles.stop') }}" style="margin-top:.5rem">
+    <button type="submit" id="stop" class="stop" {{ 'disabled' if state.status!='running' }}>Stop</button>
+  </form>
+</div>
+<div class="card">
+  <h2>Voortgang</h2>
+  <p>Status: <span id="status" class="status">{{ state.status }}</span> —
+     verwerkt: <span id="done">{{ state.done }}</span> / <span id="total">{{ state.total }}</span>
+     — bezig met: <span id="current" class="muted">{{ state.current|join(', ') }}</span></p>
+  <pre id="log">{{ state.log|join('\n') }}</pre>
+</div>
+<div class="card">
+  <h2>Inbox (eerste 50)</h2>
+  <table>{% for f in files %}<tr><td>{{ f.name }}</td><td class="muted">{{ f.parent }}</td></tr>{% else %}<tr><td class="muted">leeg</td></tr>{% endfor %}</table>
+</div>
+<script>
+async function tick(){
+  try{
+    const s=await (await fetch("{{ url_for('singles.status') }}")).json();
+    for(const k of ["status","done","total","inbox_count"]) document.getElementById(k).textContent=s[k];
+    document.getElementById("current").textContent=s.current.join(", ");
+    const log=document.getElementById("log");
+    const stick=log.scrollTop+log.clientHeight>=log.scrollHeight-5;
+    log.textContent=s.log; if(stick) log.scrollTop=log.scrollHeight;
+    const running=s.status==="running";
+    document.getElementById("start").disabled=running;
+    document.getElementById("stop").disabled=!running;
+  }catch(e){}
+}
+setInterval(tick,2000);
+</script>
+{% endblock %}
