@@ -19,7 +19,7 @@ RUN pip install \
         "/src[web,autobpm,chroma,discogs,fetchart,embedart,lyrics,lastgenre,scrub]" \
         pyyaml \
     # external metadata sources; the constraint keeps *this* beets installed
-    && pip freeze | grep -i '^beets==' > /tmp/constraints.txt \
+    && echo "beets==$(python -c 'import importlib.metadata as m; print(m.version("beets"))')" > /tmp/constraints.txt \
     && pip install -c /tmp/constraints.txt beetcamp beets-beatport4 \
     # essentia: key detection (edma profile); optional, librosa fallback in code
     && (pip install -c /tmp/constraints.txt "essentia==2.1b6.dev1389" \
