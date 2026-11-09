@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import flask
+import markupsafe
 import yaml
 
 from beets import config
@@ -126,6 +127,26 @@ TERMS = {
 app = flask.Flask(__name__, static_folder="static", template_folder="templates")
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
+GLOSSARY = {
+    "ISRC": "Internationale opnamecode; maakt matchen tussen diensten betrouwbaar.",
+    "AcoustID": TERMS["acoustid"],
+    "EBU R128": "Luidheidsnorm voor de ReplayGain-meting.",
+    "librosa": "Python-bibliotheek voor audio-analyse (hier: tempo).",
+    "Personal access token": "Sleutel uit je Discogs-account (Settings > Developers).",
+    "mixnaam": "Original Mix, Remix, Edit, Extended enz.",
+}
+
+
+@app.template_filter("abbr")
+def abbr_filter(text: str) -> markupsafe.Markup:
+    """Wrap known jargon in <abbr title> so its explanation shows on hover."""
+    out = str(markupsafe.escape(text))
+    for term, title in GLOSSARY.items():
+        tag = f'<abbr title="{markupsafe.escape(title)}" tabindex="0">{term}</abbr>'
+        out = out.replace(term, tag)
+    return markupsafe.Markup(out)
+
+
 STATE: dict[str, Any] = {
     "status": "idle",  # idle | running | stopped | done
     "log": deque(maxlen=500),
@@ -235,14 +256,21 @@ def parse_line(line: str, batch: set[str], current: str) -> str:
     if stripped in batch:
         return stripped
     if stripped in SKIP_REASONS and current:
-        STATE["skipped"][current] = SKIP_REASONS[stripped]
-        _event("skipped", SKIP_REASONS[stripped], Path(current).name)
+        reason = SKIP_REASONS[stripped]
+        STATE["added_paths"].discard(current)  # a later skip undoes "added"
+        STATE["added"] = len(STATE["added_paths"])
+        if STATE["skipped"].get(current) != reason:
+            STATE["skipped"][current] = reason
+            _event("skipped", reason, Path(current).name)
     elif (
         stripped.startswith(("Tagging track:", "Importing as-is.")) and current
     ):
         STATE["skipped"].pop(current, None)
-        STATE["added"] += 1
-        label = stripped.removeprefix("Tagging track:").strip() or "ongewijzigd"
+        STATE["added_paths"].add(current)
+        STATE["added"] = len(STATE["added_paths"])
+        label = stripped.removeprefix("Tagging track:").strip()
+        if label.startswith("Importing as-is"):
+            label = "toegevoegd met bestaande tags"
         _event("added", label, Path(current).name)
     elif (
         "error" in stripped.lower()

@@ -25,9 +25,9 @@
       <a href="{{ url_for('dashboard') }}" {% if page=='dashboard' %}aria-current="page"{% endif %}>Verwerken</a>
       <a href="{{ url_for('plugins_page') }}" {% if page=='plugins' %}aria-current="page"{% endif %}>Diensten</a>
     </nav>
-    <button class="theme-toggle" id="theme" type="button" aria-label="Wissel licht/donker thema">
+    <button class="theme-toggle" id="theme" type="button" role="switch" aria-checked="false" title="Wissel tussen donker en licht thema">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-      <span id="theme_label">donker</span>
+      <span id="theme_label">Thema: donker</span>
     </button>
   </div>
 </header>
@@ -37,7 +37,7 @@
 <script>
   (function () {
     var b = document.getElementById("theme"), l = document.getElementById("theme_label");
-    function show() { l.textContent = document.documentElement.dataset.theme === "light" ? "licht" : "donker"; }
+    function show() { var light = document.documentElement.dataset.theme === "light"; l.textContent = "Thema: " + (light ? "licht" : "donker"); b.setAttribute("aria-checked", light); }
     b.addEventListener("click", function () {
       var t = document.documentElement.dataset.theme === "light" ? "dark" : "light";
       document.documentElement.dataset.theme = t;

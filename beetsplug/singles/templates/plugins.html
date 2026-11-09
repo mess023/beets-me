@@ -8,26 +8,27 @@
     {% for group, names in groups.items() %}
     <h2 class="group-title">{{ group }}</h2>
     <table class="plugins">
-      <thead><tr><th style="width:5rem">Aan</th><th>Plugin</th><th>Doet</th><th>Instellingen</th></tr></thead>
+      <colgroup><col style="width:5rem"><col style="width:9rem"><col><col style="width:18rem"></colgroup>
+      <thead><tr><th>Aan</th><th>Plugin</th><th>Doet</th><th>Instellingen</th></tr></thead>
       <tbody>
       {% for name in names %}{% set desc = catalogue[name][1] %}{% set fields = catalogue[name][2] %}
       <tr>
         <td>
-          <label class="switch" aria-label="{{ name }} aan of uit">
+          <label class="switch">
             {% if name in always_on %}
-              <input type="checkbox" role="switch" checked disabled><span class="switch__track"></span>
+              <input type="checkbox" role="switch" checked disabled aria-label="{{ name }} altijd aan"><span class="switch__track"></span>
               <input type="hidden" name="on:{{ name }}" value="1">
             {% else %}
-              <input type="checkbox" role="switch" name="on:{{ name }}" value="1" {% if name in enabled %}checked{% endif %}><span class="switch__track"></span>
+              <input type="checkbox" role="switch" name="on:{{ name }}" value="1" aria-label="{{ name }} aan of uit" {% if name in enabled %}checked{% endif %}><span class="switch__track"></span>
             {% endif %}
           </label>
         </td>
         <td class="name">{{ name }}</td>
-        <td class="desc">{{ desc }}
+        <td class="desc">{{ desc|abbr }}
           {% if name in needs_credential and not (cfg.get(name) or {}).get(needs_credential[name]) %}
           <div class="note">staat uit tot er een sleutel is ingevuld</div>{% endif %}
         </td>
-        <td class="settings">
+        <td class="settings"><div>
           {% for key, label, secret in fields %}{% set cur = (cfg.get(name) or {}).get(key) %}
           <label class="field"><span>{{ label }}</span>
             {% if secret %}
@@ -40,7 +41,7 @@
             {% endif %}
           </label>
           {% endfor %}
-        </td>
+        </div></td>
       </tr>
       {% endfor %}
       </tbody>
@@ -48,7 +49,7 @@
     {% endfor %}
     <div class="save-row">
       <button class="btn btn--primary" type="submit" style="min-width:200px">Opslaan</button>
-      {% if saved %}<span class="saved">Opgeslagen {{ saved }} &#10003;</span>{% endif %}
+      <span id="save_state">{% if saved %}<span class="saved">Opgeslagen {{ saved }} &#10003;</span>{% endif %}</span>
       <span class="muted">Actief: <code>{{ enabled|sort|join(' ') }}</code></span>
     </div>
   </form>
@@ -56,6 +57,9 @@
 {% endblock %}
 {% block scripts %}
 <script>
+  document.getElementById("plugins_form").addEventListener("change", function () {
+    document.getElementById("save_state").innerHTML = '<span class="dirty">Nog niet opgeslagen</span>';
+  });
   document.querySelectorAll(".secret__eye").forEach(function (b) {
     b.addEventListener("click", function () {
       var i = b.previousElementSibling, show = i.type === "password";

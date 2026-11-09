@@ -7,12 +7,12 @@
   <div class="tile">
     <div class="label">Inbox</div>
     <div class="value num"><span id="inbox_count">{{ state.inbox_count }}</span> <span class="muted">bestanden</span></div>
-    <div class="sub">{{ inbox }}</div>
+    <div class="sub" title="{{ inbox }}">{{ inbox }}</div>
   </div>
   <div class="tile">
     <div class="label">Bibliotheek</div>
     <div class="value num"><span id="library_count">{{ state.library_count }}</span> <span class="muted">nummers</span></div>
-    <div class="sub">in maandmappen, AIFF</div>
+    <div class="sub"><abbr title="Submap per maand waarin het originele bestand is aangemaakt" tabindex="0">maandmappen</abbr>, AIFF</div>
   </div>
   <div class="tile">
     <div class="label">Deze run</div>
@@ -23,11 +23,11 @@
 
 <section class="card action" aria-labelledby="h-action">
   <div class="row" style="justify-content:space-between">
-    <h2 id="h-action" style="margin:0">
-      <abbr title="{{ terms.batch }}">Batch</abbr> verwerken
-      <span class="muted" style="font-weight:400">· <abbr title="{{ terms.singleton }}">losse nummers</abbr>, <abbr title="{{ terms.quiet }}">zonder vragen</abbr></span>
-    </h2>
-    <span id="badge" class="badge badge--{{ state.status }}">{{ {'idle':'Klaar om te starten','running':'Bezig','stopped':'Gestopt','done':'Klaar'}[state.status] }}</span>
+    <h1 id="h-action" style="margin:0;font-size:var(--fs-l)">
+      <abbr title="{{ terms.batch }}" tabindex="0">Batch</abbr> verwerken
+      <span class="muted" style="font-weight:400">· <abbr title="{{ terms.singleton }}" tabindex="0">losse nummers</abbr>, <abbr title="{{ terms.quiet }}" tabindex="0">zonder vragen</abbr></span>
+    </h1>
+    <span id="badge" role="status" class="badge badge--{{ state.status }}">{{ {'idle':'Klaar om te starten','running':'Bezig','stopped':'Gestopt','done':'Klaar'}[state.status] }}</span>
   </div>
   <div class="row">
     <label class="field"><span>Batchgrootte</span>
@@ -37,18 +37,18 @@
     <label class="pill"><input type="checkbox" id="reset" {% if state.status=='running' %}disabled{% endif %}><span>overgeslagen opnieuw proberen</span></label>
   </div>
   <div class="row">
-    <button class="btn btn--primary" id="primary" type="button" {% if state.status=='running' %}hidden{% endif %}>&#9654; Start</button>
-    <button class="btn btn--danger" id="stop" type="button" {% if state.status!='running' %}hidden{% endif %}>&#9632; Stop — breekt de huidige batch af</button>
+    <button class="btn btn--primary" id="primary" type="button" {% if state.status=='running' %}hidden{% endif %}><span aria-hidden="true">&#9654;</span> <span id="primary_text">Start</span></button>
+    <button class="btn btn--danger" id="stop" type="button" {% if state.status!='running' %}hidden{% endif %}><span aria-hidden="true">&#9632;</span> <span id="stop_text">Stop — breekt de huidige batch af</span></button>
   </div>
 </section>
 
 <section class="card" aria-labelledby="h-progress">
   <div class="progress-head">
     <h2 id="h-progress" style="margin:0">Voortgang</h2>
-    <span class="muted num"><span id="progress_text"></span> <span id="elapsed"></span></span>
+    <span class="muted num"><span id="progress_text" aria-live="polite"></span> <span id="elapsed"></span></span>
   </div>
-  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress__bar" id="bar"></div></div>
-  <div class="progress-now" id="now"></div>
+  <div class="progress" role="progressbar" aria-labelledby="h-progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress__bar" id="bar"></div></div>
+  <div class="progress-now" id="now" aria-live="polite"></div>
 </section>
 
 <div class="cols">

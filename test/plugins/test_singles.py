@@ -54,3 +54,17 @@ def test_parse_line_tracks_skipped_and_added():
     parse_line("  Tagging track: Artist - Title\n", batch, cur)
     assert STATE["added"] == 1
     assert [e["kind"] for e in STATE["events"]] == ["added", "skipped"]
+
+
+def test_parse_line_skip_after_asis_undoes_added():
+    STATE["skipped"].clear()
+    STATE["added_paths"].clear()
+    STATE["added"] = 0
+    batch = {"/inbox/a.flac"}
+    cur = parse_line("/inbox/a.flac\n", batch, "")
+    parse_line("Importing as-is.\n", batch, cur)
+    assert STATE["added"] == 1
+    parse_line("This track is already in the library!\n", batch, cur)
+    parse_line("Skipping.\n", batch, cur)
+    assert STATE["added"] == 0
+    assert STATE["skipped"]["/inbox/a.flac"] == "geen match gevonden"
