@@ -6,7 +6,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     BEETSDIR=/config \
     PUID=1000 \
-    PGID=1000
+    PGID=1000 \
+    WEB_PORT=8338
 
 # ffmpeg: convert + replaygain (ebur128); libchromaprint1: chroma/AcoustID via
 # pyacoustid + audioread (Debian's fpcalc binary fails with "Protocol not
@@ -36,7 +37,7 @@ RUN chmod +x /usr/local/bin/to-aiff /entrypoint.sh
 VOLUME ["/config", "/music/inbox", "/music/library"]
 EXPOSE 8338
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
-    CMD curl -fs http://localhost:8338/stats || exit 1
+    CMD curl -fs "http://localhost:${WEB_PORT}/stats" || exit 1
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
 CMD ["web"]
