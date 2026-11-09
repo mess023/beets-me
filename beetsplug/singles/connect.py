@@ -103,7 +103,8 @@ def test_beatport4(s: dict) -> str:
     first = f" · bv. {hits[0].name} ({hits[0].mix_name})" if hits else ""
     return (
         f"ingelogd als {getattr(account, 'username', '?')} · {len(hits)} tracks "
-        f"voor '{query}'{first} · token nog {left // 3600} u {left % 3600 // 60} min geldig"
+        f"voor '{query}'{first} · token nog {left // 3600} u "
+        f"{left % 3600 // 60} min geldig"
     )
 
 
@@ -118,9 +119,9 @@ def test_bandcamp(s: dict) -> str:
 
 
 def test_chroma(s: dict) -> str:
-    from beetsplug.chroma import API_KEY
-
-    key = s.get("apikey") or API_KEY  # beets' built-in AcoustID key
+    key = (
+        s.get("apikey") or "1vOwZtEn"
+    )  # beets' built-in AcoustID key (chroma.py)
     d = _json(
         "https://api.acoustid.org/v2/lookup",
         params={
@@ -141,7 +142,10 @@ def test_fetchart(s: dict) -> str:
         params={"term": QUERY, "entity": "album", "limit": 1},
     )
     requests.head("https://coverartarchive.org/", timeout=TIMEOUT, headers=UA)
-    return f"verbonden · iTunes {d.get('resultCount', 0)} hoes, Cover Art Archive bereikbaar"
+    return (
+        f"verbonden · iTunes {d.get('resultCount', 0)} hoes, "
+        "Cover Art Archive bereikbaar"
+    )
 
 
 def test_lyrics(s: dict) -> str:
