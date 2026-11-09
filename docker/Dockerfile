@@ -34,9 +34,9 @@ COPY docker/config.default.yaml /defaults/config.yaml
 RUN chmod +x /usr/local/bin/to-aiff /entrypoint.sh
 
 VOLUME ["/config", "/music/inbox", "/music/library"]
-EXPOSE 8337
+EXPOSE 8338
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
-    CMD curl -fs http://localhost:8337/stats || exit 1
+    CMD curl -fs http://localhost:8338/stats || exit 1
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
 CMD ["web"]

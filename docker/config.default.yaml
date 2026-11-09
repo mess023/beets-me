@@ -1,6 +1,6 @@
 # Default beets configuration for the singles pipeline container.
 # Copied to /config/config.yaml on first start; edit there (or via the web UI
-# at http://<host>:8337/singles/plugins).
+# at http://<host>:8338/singles/plugins).
 
 directory: /music/library
 library: /config/library.db
@@ -83,4 +83,4 @@ musicbrainz:
 
 web:
   host: 0.0.0.0
-  port: 8337
+  port: 8338
