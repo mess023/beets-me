@@ -37,7 +37,7 @@ RUN chmod +x /usr/local/bin/to-aiff /entrypoint.sh
 VOLUME ["/config", "/music/inbox", "/music/library"]
 EXPOSE 8338
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
-    CMD curl -fs "http://localhost:${WEB_PORT}/stats" || exit 1
+    CMD curl -fs "http://localhost:${WEB_PORT}/api/status" || exit 1
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
-CMD ["web"]
+CMD ["singles-web"]

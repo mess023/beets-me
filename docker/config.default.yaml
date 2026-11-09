@@ -1,6 +1,6 @@
 # Default beets configuration for the singles pipeline container.
 # Copied to /config/config.yaml on first start; edit there (or via the web UI
-# at http://<host>:8338/singles/plugins).
+# at http://<host>:8338/plugins).
 
 directory: /music/library
 library: /config/library.db
@@ -20,7 +20,6 @@ plugins:
   - replaygain
   - convert
   - scrub
-  - web
   - singles
 
 import:
@@ -81,8 +80,3 @@ chroma:
 musicbrainz:
   search_limit: 10
 
-# host/port here only apply when you run `beet web` yourself; the container
-# starts the web UI with WEB_PORT from docker-compose.yaml.
-web:
-  host: 0.0.0.0
-  port: 8338

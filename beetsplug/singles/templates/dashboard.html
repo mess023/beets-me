@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Verwerken{% endblock %}
+{% block body %}
+<div id="dash" data-state='{{ state|tojson|forceescape }}'>
+
+<section class="tiles" aria-label="Status">
+  <div class="tile">
+    <div class="label">Inbox</div>
+    <div class="value num"><span id="inbox_count">{{ state.inbox_count }}</span> <span class="muted">bestanden</span></div>
+    <div class="sub">{{ inbox }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Bibliotheek</div>
+    <div class="value num"><span id="library_count">{{ state.library_count }}</span> <span class="muted">nummers</span></div>
+    <div class="sub">in maandmappen, AIFF</div>
+  </div>
+  <div class="tile">
+    <div class="label">Deze run</div>
+    <div class="value num"><span id="run_added">{{ state.added }}</span> <span class="muted">toegevoegd</span></div>
+    <div class="sub"><span id="run_skipped" class="num">{{ state.skipped|length }}</span> overgeslagen</div>
+  </div>
+</section>
+
+<section class="card action" aria-labelledby="h-action">
+  <div class="row" style="justify-content:space-between">
+    <h2 id="h-action" style="margin:0">
+      <abbr title="{{ terms.batch }}">Batch</abbr> verwerken
+      <span class="muted" style="font-weight:400">· <abbr title="{{ terms.singleton }}">losse nummers</abbr>, <abbr title="{{ terms.quiet }}">zonder vragen</abbr></span>
+    </h2>
+    <span id="badge" class="badge badge--{{ state.status }}">{{ {'idle':'Klaar om te starten','running':'Bezig','stopped':'Gestopt','done':'Klaar'}[state.status] }}</span>
+  </div>
+  <div class="row">
+    <label class="field"><span>Batchgrootte</span>
+      <input class="input" type="number" id="batch_size" min="1" max="500" value="{{ batch_size }}" {% if state.status=='running' %}disabled{% endif %}>
+    </label>
+    <label class="pill"><input type="checkbox" id="loop" {% if state.status=='running' %}disabled{% endif %}><span>doorgaan tot de inbox leeg is</span></label>
+    <label class="pill"><input type="checkbox" id="reset" {% if state.status=='running' %}disabled{% endif %}><span>overgeslagen opnieuw proberen</span></label>
+  </div>
+  <div class="row">
+    <button class="btn btn--primary" id="primary" type="button" {% if state.status=='running' %}hidden{% endif %}>&#9654; Start</button>
+    <button class="btn btn--danger" id="stop" type="button" {% if state.status!='running' %}hidden{% endif %}>&#9632; Stop — breekt de huidige batch af</button>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="h-progress">
+  <div class="progress-head">
+    <h2 id="h-progress" style="margin:0">Voortgang</h2>
+    <span class="muted num"><span id="progress_text"></span> <span id="elapsed"></span></span>
+  </div>
+  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress__bar" id="bar"></div></div>
+  <div class="progress-now" id="now"></div>
+</section>
+
+<div class="cols">
+  <section class="card" aria-labelledby="h-recent">
+    <h2 id="h-recent">Laatst toegevoegd</h2>
+    <ul class="tracks" id="tracks" style="list-style:none;margin:0;padding:0"></ul>
+  </section>
+  <section class="card" aria-labelledby="h-skipped">
+    <div class="progress-head">
+      <h2 id="h-skipped" style="margin:0">Overgeslagen <span class="muted num">(<span id="skipped_count">0</span>)</span></h2>
+      <button class="btn btn--small" id="retry_all" type="button" hidden>alle opnieuw</button>
+    </div>
+    <ul class="skipped" id="skipped" style="margin-top:var(--space-2)"></ul>
+  </section>
+</div>
+
+<details class="panel" id="events_panel" {% if state.status=='running' %}open{% endif %}>
+  <summary>Gebeurtenissen <span class="num">(<span id="events_count">0</span>)</span></summary>
+  <ul class="events" id="events"></ul>
+</details>
+<details class="panel">
+  <summary>Volledige log (ruwe beets-uitvoer)</summary>
+  <pre id="log"></pre>
+</details>
+<details class="panel">
+  <summary>Inbox-bestanden</summary>
+  <ul class="files">{% for f in files %}<li>{{ f }}</li>{% else %}<li>Inbox is leeg.</li>{% endfor %}</ul>
+</details>
+
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

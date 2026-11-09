@@ -1,5 +1,5 @@
 from beetsplug.singles import CAMELOT, key_from_chroma, month_folder
-from beetsplug.singles.ui import apply_plugin_form
+from beetsplug.singles.ui import STATE, apply_plugin_form, parse_line
 
 
 def test_month_folder_english_month_and_year():
@@ -31,11 +31,26 @@ def test_apply_plugin_form_toggles_and_keeps_values():
         "singles.batch_size": "5",
     }
     out = apply_plugin_form(cfg, form)
-    assert out["plugins"] == ["inline", "discogs", "singles", "web"]
+    assert out["plugins"] == ["inline", "discogs", "singles"]
     assert out["discogs"]["user_token"] == "old"  # empty input keeps value
     assert out["singles"]["batch_size"] == 5
 
 
 def test_apply_plugin_form_refuses_plugin_without_credential():
     out = apply_plugin_form({}, {"on:discogs": "1", "on:deezer": "1"})
-    assert out["plugins"] == ["deezer", "singles", "web"]
+    assert out["plugins"] == ["deezer", "singles"]
+
+
+def test_parse_line_tracks_skipped_and_added():
+    STATE["skipped"].clear()
+    STATE["events"].clear()
+    STATE["added"] = 0
+    STATE["added_paths"].clear()
+    batch = {"/inbox/a.flac", "/inbox/b.flac"}
+    cur = parse_line("/inbox/a.flac\n", batch, "")
+    cur = parse_line("Skipping.\n", batch, cur)
+    assert STATE["skipped"] == {"/inbox/a.flac": "geen match gevonden"}
+    cur = parse_line("/inbox/b.flac\n", batch, cur)
+    parse_line("  Tagging track: Artist - Title\n", batch, cur)
+    assert STATE["added"] == 1
+    assert [e["kind"] for e in STATE["events"]] == ["added", "skipped"]

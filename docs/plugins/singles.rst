@@ -2,13 +2,19 @@ Singles Plugin
 ==============
 
 The ``singles`` plugin turns beets into a batch pipeline for loose
-(non-album) tracks and adds two pages to the :doc:`web </plugins/web>`
-interface:
+(non-album) tracks and ships its own web interface, started with
+``beet singles-web [host] [port]`` (default ``0.0.0.0 8338``):
 
-- ``/singles/``: pick a batch size, start or stop a run and follow the log.
-  Each batch runs ``beet import -s -q`` on the next files from the inbox.
-- ``/singles/plugins``: enable or disable plugins and store their settings
+- ``/``: inbox and library status, batch size, start/stop, live progress,
+  the last added tracks with cover, key and BPM, skipped files with a retry
+  button, and an event list plus the raw log. Each batch runs
+  ``beet import -s -q`` on the next files from the inbox.
+- ``/plugins``: enable or disable plugins and store their settings
   (API keys and the like) in ``config.yaml``.
+
+The interface is dark by default and follows the system's light preference
+or the toggle in the header. It does not use the :doc:`web </plugins/web>`
+plugin.
 
 On top of that the plugin:
 

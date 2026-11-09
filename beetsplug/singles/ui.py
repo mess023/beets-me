@@ -1,5 +1,7 @@
-"""Web pages for the singles pipeline, mounted on the ``web`` plugin's
-Flask app under ``/singles/``.
+"""Own web UI for the singles pipeline (Flask, server-rendered, vanilla JS).
+
+Started with ``beet singles-web [host] [port]``. Replaces the upstream
+``web`` plugin UI entirely; nothing from it is reused.
 """
 
 from __future__ import annotations
@@ -7,8 +9,10 @@ from __future__ import annotations
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from pathlib import Path
+from typing import Any
 
 import flask
 import yaml
@@ -19,54 +23,71 @@ AUDIO_EXTS = {
     ".flac", ".wav", ".aiff", ".aif", ".mp3", ".m4a", ".ogg", ".opus", ".wv", ".ape",
 }  # fmt: skip
 
-# Curated plugin catalogue for the settings page: name -> (description,
-# [(config key, label, is_secret)]). Keys are relative to the plugin section.
-PLUGINS: dict[str, tuple[str, list[tuple[str, str, bool]]]] = {
-    "musicbrainz": ("Metadatabron: MusicBrainz (gratis, basis)", []),
+# Plugin catalogue for the settings page, grouped by function.
+# name -> (group, description, [(config key, label, is_secret)])
+PLUGINS: dict[str, tuple[str, str, list[tuple[str, str, bool]]]] = {
+    "musicbrainz": ("Metadatabronnen", "Gratis basisbron; ISRC, ID's", []),
     "discogs": (
-        "Metadatabron: Discogs (label, catalogusnummer, remixers, vinyl)",
+        "Metadatabronnen",
+        "Label, catalogusnummer, remixers (vinyl, white labels)",
         [("user_token", "Personal access token", True)],
     ),
-    "deezer": ("Metadatabron: Deezer (gratis, geen sleutel)", []),
+    "deezer": ("Metadatabronnen", "Gratis, geen sleutel nodig", []),
     "spotify": (
-        "Metadatabron: Spotify (ISRC, populariteit)",
+        "Metadatabronnen",
+        "ISRC en populariteit",
         [
             ("client_id", "Client ID", False),
             ("client_secret", "Client secret", True),
         ],
     ),
-    "bandcamp": ("Metadatabron: Bandcamp (externe plugin beetcamp)", []),
+    "bandcamp": ("Metadatabronnen", "Bandcamp via externe plugin beetcamp", []),
     "beatport4": (
-        "Metadatabron: Beatport v4 (externe plugin, onofficieel; kan breken)",
+        "Metadatabronnen",
+        "Beatport (onofficiële API, kan breken); zet mixnaam in de titel",
         [
             ("username", "Gebruikersnaam", False),
             ("password", "Wachtwoord", True),
         ],
     ),
     "chroma": (
-        "Akoestische fingerprint via AcoustID (herkent bestanden zonder tags)",
+        "Herkenning",
+        "AcoustID-fingerprint: herkent audio zonder bruikbare tags",
         [("apikey", "AcoustID API key", True)],
     ),
-    "fromfilename": ("Artiest/titel raden uit de bestandsnaam", []),
-    "ftintitle": ("'feat. X' van artiest naar titel verplaatsen", []),
-    "fetchart": ("Albumhoezen ophalen (iTunes, Cover Art Archive, ...)", []),
-    "embedart": ("Hoezen in het audiobestand embedden", []),
-    "autobpm": ("BPM berekenen (librosa)", []),
-    "replaygain": (
-        "ReplayGain berekenen (ffmpeg, EBU R128)",
-        [("targetlevel", "Doelniveau dB", False)],
+    "fromfilename": (
+        "Herkenning",
+        "Artiest en titel raden uit de bestandsnaam",
+        [],
     ),
-    "convert": ("Lossless naar AIFF converteren bij import", []),
-    "lastgenre": ("Genres via Last.fm", []),
-    "lyrics": ("Songteksten ophalen", []),
-    "scrub": ("Rommelige tags wissen voor het schrijven", []),
+    "ftintitle": (
+        "Verrijking",
+        "'feat. X' van artiest naar titel verplaatsen",
+        [],
+    ),
+    "fetchart": (
+        "Verrijking",
+        "Hoes ophalen (iTunes, Cover Art Archive, ...)",
+        [],
+    ),
+    "embedart": ("Verrijking", "Hoes in het audiobestand opslaan", []),
+    "autobpm": ("Verrijking", "BPM meten (librosa)", []),
+    "replaygain": (
+        "Verrijking",
+        "Luidheidscorrectie (ffmpeg, EBU R128)",
+        [("targetlevel", "Doelniveau (dB)", False)],
+    ),
+    "convert": ("Verrijking", "Lossless naar AIFF converteren bij import", []),
+    "lastgenre": ("Verrijking", "Genres via Last.fm", []),
+    "lyrics": ("Verrijking", "Songteksten ophalen", []),
+    "scrub": ("Verrijking", "Oude, rommelige tags wissen", []),
     "singles": (
-        "Deze pipeline (maandmap, key, hoes voor losse nummers)",
+        "Pipeline",
+        "Maandmap, toonsoort, hoes voor losse nummers (altijd aan)",
         [("inbox", "Inbox-map", False), ("batch_size", "Batchgrootte", False)],
     ),
-    "web": ("Deze webinterface", []),
 }
-ALWAYS_ON = {"web", "singles"}
+ALWAYS_ON = {"singles"}
 # Plugins that prompt interactively (and so hang a quiet batch) when this
 # credential is missing: only enable them once it is set.
 NEEDS_CREDENTIAL = {
@@ -75,21 +96,56 @@ NEEDS_CREDENTIAL = {
     "beatport4": "username",
 }
 
-bp = flask.Blueprint(
-    "singles", __name__, url_prefix="/singles", template_folder="templates"
-)
+TERMS = {
+    "batch": (
+        "Groep bestanden die beets in één keer importeert. Kleiner = sneller "
+        "resultaat zichtbaar, groter = minder overhead."
+    ),
+    "singleton": (
+        "Los nummer, geen onderdeel van een album; beets zoekt per nummer een "
+        "match."
+    ),
+    "quiet": (
+        "beets stelt geen vragen. Twijfelt het, dan slaat het het bestand over "
+        "en blijft het in de inbox."
+    ),
+    "camelot": (
+        "Toonsoort als wielnotatie (1A tot 12B) voor harmonisch mixen: buren op "
+        "het wiel passen bij elkaar."
+    ),
+    "replaygain": (
+        "Meet hoe hard een nummer klinkt en slaat een correctie op zodat alles "
+        "even luid klinkt."
+    ),
+    "acoustid": (
+        "Akoestische vingerafdruk van de audio zelf; herkent een nummer ook "
+        "zonder tags."
+    ),
+}
 
-STATE: dict = {
-    "status": "idle",
+app = flask.Flask(__name__, static_folder="static", template_folder="templates")
+app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
+
+STATE: dict[str, Any] = {
+    "status": "idle",  # idle | running | stopped | done
     "log": deque(maxlen=500),
-    "done": 0,
-    "total": 0,
+    "events": deque(maxlen=200),
+    "skipped": {},  # path -> reason
     "attempted": set(),
+    "done": 0,
+    "added": 0,
+    "added_paths": set(),
+    "total": 0,
+    "started_at": None,
+    "finished_at": None,
+    "current": [],
     "proc": None,
     "stop": False,
-    "current": [],
 }
 _lock = threading.Lock()
+
+
+# --- config file ----------------------------------------------------------
 
 
 def config_path() -> Path:
@@ -118,7 +174,7 @@ def enabled_plugins(cfg: dict) -> list[str]:
 
 def apply_plugin_form(cfg: dict, form: dict) -> dict:
     """Pure helper: toggle plugins and store settings from the form."""
-    for name, (_, fields) in PLUGINS.items():
+    for name, (_, _, fields) in PLUGINS.items():
         for key, _, _ in fields:
             value = (form.get(f"{name}.{key}") or "").strip()
             if not value:
@@ -133,6 +189,9 @@ def apply_plugin_form(cfg: dict, form: dict) -> dict:
     others = [n for n in enabled_plugins(cfg) if n not in PLUGINS]
     cfg["plugins"] = others + [n for n in PLUGINS if n in on]
     return cfg
+
+
+# --- inbox + runner -------------------------------------------------------
 
 
 def inbox_dir() -> Path:
@@ -152,16 +211,58 @@ def inbox_files() -> list[Path]:
     )
 
 
+def _event(kind: str, text: str, file: str = "") -> None:
+    STATE["events"].appendleft(
+        {
+            "t": time.strftime("%H:%M:%S"),
+            "kind": kind,
+            "text": text,
+            "file": file,
+        }
+    )
+
+
+SKIP_REASONS = {
+    "Skipping.": "geen match gevonden",
+    "This track is already in the library!": "staat al in de bibliotheek",
+}
+
+
+def parse_line(line: str, batch: set[str], current: str) -> str:
+    """Pure helper: update events/skipped from one beets log line.
+    Returns the (possibly new) current file path."""
+    stripped = line.strip()
+    if stripped in batch:
+        return stripped
+    if stripped in SKIP_REASONS and current:
+        STATE["skipped"][current] = SKIP_REASONS[stripped]
+        _event("skipped", SKIP_REASONS[stripped], Path(current).name)
+    elif (
+        stripped.startswith(("Tagging track:", "Importing as-is.")) and current
+    ):
+        STATE["skipped"].pop(current, None)
+        STATE["added"] += 1
+        label = stripped.removeprefix("Tagging track:").strip() or "ongewijzigd"
+        _event("added", label, Path(current).name)
+    elif (
+        "error" in stripped.lower()
+        and current
+        and not stripped.startswith("  ")
+    ):
+        _event("error", stripped[:160], Path(current).name)
+    return current
+
+
 def _run(batch_size: int, loop: bool) -> None:
     try:
         while not STATE["stop"]:
             files = [f for f in inbox_files() if f not in STATE["attempted"]]
             batch = files[:batch_size]
             if not batch:
-                STATE["log"].append("Inbox leeg of alles al geprobeerd.")
                 break
             STATE["attempted"].update(batch)
             STATE["current"] = [f.name for f in batch]
+            _event("batch", f"batch van {len(batch)} bestanden gestart")
             STATE["log"].append(f"--- batch van {len(batch)} bestanden ---")
             cmd = [sys.executable, "-m", "beets"]
             if config_path().exists():
@@ -176,8 +277,11 @@ def _run(batch_size: int, loop: bool) -> None:
             )
             STATE["proc"] = proc
             assert proc.stdout
+            names = {str(f) for f in batch}
+            current = ""
             for line in proc.stdout:
                 STATE["log"].append(line.rstrip())
+                current = parse_line(line, names, current)
             proc.wait()
             STATE["done"] += len(batch)
             if not loop:
@@ -185,80 +289,194 @@ def _run(batch_size: int, loop: bool) -> None:
     finally:
         STATE["proc"] = None
         STATE["current"] = []
-        STATE["status"] = "stopped" if STATE["stop"] else "idle"
+        STATE["finished_at"] = time.time()
+        STATE["status"] = "stopped" if STATE["stop"] else "done"
+        _event("batch", "gestopt" if STATE["stop"] else "klaar")
 
 
-@bp.route("/")
-def dashboard() -> str:
-    files = inbox_files()
-    return flask.render_template(
-        "singles.html",
-        inbox=inbox_dir(),
-        files=files[:50],
-        inbox_count=len(files),
-        batch_size=config["singles"]["batch_size"].get(int),
-        state=STATE,
-    )
-
-
-@bp.route("/start", methods=["POST"])
-def start() -> flask.Response:
+def start_run(batch_size: int, loop: bool, reset: bool) -> bool:
     with _lock:
-        if STATE["status"] != "running":
-            form = flask.request.form
-            batch_size = max(1, int(form.get("batch_size") or 1))
-            loop = bool(form.get("loop"))
-            if form.get("reset"):
-                STATE["attempted"].clear()
-                STATE["done"] = 0
-            STATE.update(status="running", stop=False, total=len(inbox_files()))
-            threading.Thread(
-                target=_run, args=(batch_size, loop), daemon=True
-            ).start()
-    return flask.redirect(flask.url_for("singles.dashboard"))
+        if STATE["status"] == "running":
+            return False
+        if reset:
+            STATE["attempted"].clear()
+            STATE["skipped"].clear()
+        STATE.update(
+            status="running",
+            stop=False,
+            done=0,
+            added=0,
+            added_paths=set(),
+            total=len(
+                [f for f in inbox_files() if f not in STATE["attempted"]]
+            ),
+            started_at=time.time(),
+            finished_at=None,
+        )
+        threading.Thread(
+            target=_run, args=(max(1, batch_size), loop), daemon=True
+        ).start()
+        return True
 
 
-@bp.route("/stop", methods=["POST"])
-def stop() -> flask.Response:
+def stop_run() -> None:
     STATE["stop"] = True
     if proc := STATE["proc"]:
         proc.terminate()
-    return flask.redirect(flask.url_for("singles.dashboard"))
 
 
-@bp.route("/status.json")
-def status() -> flask.Response:
-    return flask.jsonify(
-        status=STATE["status"],
-        done=STATE["done"],
-        total=STATE["total"],
-        current=STATE["current"],
-        inbox_count=len(inbox_files()),
-        log="\n".join(STATE["log"]),
+# --- library --------------------------------------------------------------
+
+
+def recent_tracks(limit: int = 12) -> list[dict]:
+    lib = app.config.get("lib")
+    if lib is None:
+        return []
+    out = []
+    for item in lib.items("added-"):
+        key = item.get("initial_key") or ""
+        out.append(
+            {
+                "id": item.id,
+                "artist": item.artist,
+                "title": item.title,
+                "key": key,
+                "camelot": item.get("camelot_key") or "",
+                "bpm": item.bpm or "",
+                "format": item.format,
+                "bitdepth": item.bitdepth or "",
+                "folder": Path(str(item.filepath)).parent.name,
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def library_count() -> int:
+    lib = app.config.get("lib")
+    return len(lib.items()) if lib is not None else 0
+
+
+def status_payload() -> dict:
+    s = STATE
+    return {
+        "status": s["status"],
+        "done": s["done"],
+        "added": s["added"],
+        "total": s["total"],
+        "skipped": [
+            {"file": Path(p).name, "path": p, "reason": r}
+            for p, r in s["skipped"].items()
+        ],
+        "current": s["current"],
+        "started_at": s["started_at"],
+        "finished_at": s["finished_at"],
+        "inbox_count": len(inbox_files()),
+        "library_count": library_count(),
+        "events": list(s["events"]),
+        "log": "\n".join(s["log"]),
+        "recent": recent_tracks(),
+    }
+
+
+# --- routes ---------------------------------------------------------------
+
+
+@app.route("/")
+def dashboard() -> str:
+    return flask.render_template(
+        "dashboard.html",
+        page="dashboard",
+        inbox=inbox_dir(),
+        files=[f.name for f in inbox_files()[:200]],
+        batch_size=config["singles"]["batch_size"].get(int),
+        state=status_payload(),
+        terms=TERMS,
     )
 
 
-@bp.route("/plugins", methods=["GET", "POST"])
+@app.route("/api/status")
+def api_status() -> flask.Response:
+    return flask.jsonify(status_payload())
+
+
+@app.route("/api/start", methods=["POST"])
+def api_start() -> flask.Response:
+    data = flask.request.get_json(silent=True) or flask.request.form
+    started = start_run(
+        int(data.get("batch_size") or 1),
+        bool(data.get("loop")),
+        bool(data.get("reset")),
+    )
+    return flask.jsonify(started=started, **status_payload())
+
+
+@app.route("/api/stop", methods=["POST"])
+def api_stop() -> flask.Response:
+    stop_run()
+    return flask.jsonify(status_payload())
+
+
+@app.route("/api/retry", methods=["POST"])
+def api_retry() -> flask.Response:
+    data = flask.request.get_json(silent=True) or flask.request.form
+    path = data.get("path")
+    targets = [path] if path else list(STATE["skipped"])
+    for p in targets:
+        STATE["skipped"].pop(p, None)
+        STATE["attempted"].discard(Path(p))
+    if STATE["status"] != "running":
+        start_run(len(targets) or 1, False, False)
+    return flask.jsonify(status_payload())
+
+
+@app.route("/art/<int:item_id>")
+def art(item_id: int) -> flask.Response:
+    lib = app.config.get("lib")
+    item = lib.get_item(item_id) if lib is not None else None
+    if item is None:
+        flask.abort(404)
+    try:
+        import mediafile
+
+        data = mediafile.MediaFile(str(item.filepath)).art
+    except Exception:
+        data = None
+    if not data:
+        flask.abort(404)
+    mime = "image/png" if data[:4] == b"\x89PNG" else "image/jpeg"
+    resp = flask.Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "max-age=86400"
+    return resp
+
+
+@app.route("/plugins", methods=["GET", "POST"])
 def plugins_page() -> str:
     cfg = load_yaml()
-    saved = False
+    saved = None
     if flask.request.method == "POST":
         cfg = apply_plugin_form(cfg, flask.request.form)
         save_yaml(cfg)
-        saved = True
+        saved = time.strftime("%H:%M")
+    groups: dict[str, list[str]] = {}
+    for name, (group, _, _) in PLUGINS.items():
+        groups.setdefault(group, []).append(name)
     return flask.render_template(
         "plugins.html",
+        page="plugins",
         catalogue=PLUGINS,
+        groups=groups,
         enabled=set(enabled_plugins(cfg)),
         cfg=cfg,
         saved=saved,
         path=config_path(),
         always_on=ALWAYS_ON,
+        needs_credential=NEEDS_CREDENTIAL,
+        terms=TERMS,
     )
 
 
-def register() -> None:
-    from beetsplug import web
-
-    if "singles" not in web.app.blueprints:
-        web.app.register_blueprint(bp)
+def serve(lib: Any, host: str, port: int) -> None:
+    app.config["lib"] = lib
+    app.run(host=host, port=port, threaded=True)

@@ -19,7 +19,7 @@ services:
       - /mnt/tank/music/inbox:/music/inbox
       - /mnt/tank/music/library:/music/library
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:$${WEB_PORT}/stats"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:$${WEB_PORT}/api/status"]
       interval: 30s
       timeout: 5s
       start_period: 30s

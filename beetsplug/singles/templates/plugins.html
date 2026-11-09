@@ -1,39 +1,68 @@
-{% extends "_layout.html" %}{% set page='plugins' %}
+{% extends "base.html" %}
+{% block title %}Diensten{% endblock %}
 {% block body %}
-<div class="card">
-  <h2>Plugins &amp; diensten</h2>
-  <p class="muted">Schrijft naar <code>{{ path }}</code>. Lege velden laten de opgeslagen waarde staan.
-  Wijzigingen gelden voor de volgende batch; herstart de container om de webinterface zelf te laten herladen.</p>
-  {% if saved %}<p class="ok">Opgeslagen.</p>{% endif %}
-  <form method="post">
-  <table>
-    <tr><th>Aan</th><th>Plugin</th><th>Doet</th><th>Instellingen</th></tr>
-    {% for name, (desc, fields) in catalogue.items() %}
-    <tr>
-      <td>
-        {% if name in always_on %}
-          <input type="checkbox" checked disabled><input type="hidden" name="on:{{ name }}" value="1">
-        {% else %}
-          <input type="checkbox" name="on:{{ name }}" value="1" {{ 'checked' if name in enabled }}>
-        {% endif %}
-      </td>
-      <td><code>{{ name }}</code></td>
-      <td>{{ desc }}</td>
-      <td>{% for key, label, secret in fields %}
-        {% set cur = (cfg.get(name) or {}).get(key) %}
-        <label style="display:block">{{ label }}
-          <input type="{{ 'password' if secret else 'text' }}" name="{{ name }}.{{ key }}"
-                 {% if secret %}placeholder="{{ '(ingesteld)' if cur else '' }}"
-                 {% elif cur is not none %}value="{{ cur }}"{% endif %}>
-        </label>{% endfor %}</td>
-    </tr>
+<section class="card">
+  <h1 style="font-size:var(--fs-l)">Plugins &amp; diensten</h1>
+  <p class="muted" style="margin:0">Schrijft naar <code>{{ path }}</code> · geldt vanaf de volgende batch. Lege velden laten de opgeslagen waarde staan.</p>
+  <form method="post" id="plugins_form">
+    {% for group, names in groups.items() %}
+    <h2 class="group-title">{{ group }}</h2>
+    <table class="plugins">
+      <thead><tr><th style="width:5rem">Aan</th><th>Plugin</th><th>Doet</th><th>Instellingen</th></tr></thead>
+      <tbody>
+      {% for name in names %}{% set desc = catalogue[name][1] %}{% set fields = catalogue[name][2] %}
+      <tr>
+        <td>
+          <label class="switch" aria-label="{{ name }} aan of uit">
+            {% if name in always_on %}
+              <input type="checkbox" role="switch" checked disabled><span class="switch__track"></span>
+              <input type="hidden" name="on:{{ name }}" value="1">
+            {% else %}
+              <input type="checkbox" role="switch" name="on:{{ name }}" value="1" {% if name in enabled %}checked{% endif %}><span class="switch__track"></span>
+            {% endif %}
+          </label>
+        </td>
+        <td class="name">{{ name }}</td>
+        <td class="desc">{{ desc }}
+          {% if name in needs_credential and not (cfg.get(name) or {}).get(needs_credential[name]) %}
+          <div class="note">staat uit tot er een sleutel is ingevuld</div>{% endif %}
+        </td>
+        <td class="settings">
+          {% for key, label, secret in fields %}{% set cur = (cfg.get(name) or {}).get(key) %}
+          <label class="field"><span>{{ label }}</span>
+            {% if secret %}
+            <span class="secret">
+              <input class="input" type="password" name="{{ name }}.{{ key }}" autocomplete="off" spellcheck="false" placeholder="{{ '(ingesteld)' if cur else '' }}">
+              <button type="button" class="secret__eye" aria-label="Toon sleutel" aria-pressed="false">&#128065;</button>
+            </span>
+            {% else %}
+            <input class="input" type="text" name="{{ name }}.{{ key }}" {% if cur is not none %}value="{{ cur }}"{% endif %}>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
     {% endfor %}
-  </table>
-  <p><button type="submit">Opslaan</button></p>
+    <div class="save-row">
+      <button class="btn btn--primary" type="submit" style="min-width:200px">Opslaan</button>
+      {% if saved %}<span class="saved">Opgeslagen {{ saved }} &#10003;</span>{% endif %}
+      <span class="muted">Actief: <code>{{ enabled|sort|join(' ') }}</code></span>
+    </div>
   </form>
-</div>
-<div class="card">
-  <h3>Huidige <code>plugins:</code>-regel</h3>
-  <code>{{ enabled|sort|join(' ') }}</code>
-</div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll(".secret__eye").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var i = b.previousElementSibling, show = i.type === "password";
+      i.type = show ? "text" : "password";
+      b.setAttribute("aria-pressed", show);
+      b.setAttribute("aria-label", show ? "Verberg sleutel" : "Toon sleutel");
+    });
+  });
+</script>
 {% endblock %}

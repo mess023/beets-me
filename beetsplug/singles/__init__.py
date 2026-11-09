@@ -130,9 +130,22 @@ class SinglesPlugin(BeetsPlugin):
         if self.config["auto_art"].get(bool):
             self.register_listener("item_imported", self._singleton_art)
 
-        from . import ui  # registers the Flask blueprint on the web plugin
+    def commands(self) -> list:
+        from beets import ui as beets_ui
 
-        ui.register()
+        cmd = beets_ui.Subcommand(
+            "singles-web", help="start the singles web interface"
+        )
+
+        def func(lib: Library, opts: object, args: list[str]) -> None:
+            from . import ui
+
+            host = args[0] if args else "0.0.0.0"
+            port = int(args[1]) if len(args) > 1 else 8338
+            ui.serve(lib, host, port)
+
+        cmd.func = func
+        return [cmd]
 
     # --- creation date -> "July 2025" -------------------------------------
 

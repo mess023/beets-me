@@ -21,8 +21,8 @@ chown beets:beets /music/inbox /music/library 2>/dev/null || true
 
 # `web` without arguments: bind address and port come from the environment
 # (WEB_PORT, set in docker-compose.yaml), not from an older /config/config.yaml.
-if [ "$1" = "web" ] && [ $# -eq 1 ]; then
-    set -- web 0.0.0.0 "${WEB_PORT:-8338}"
+if [ "$1" = "singles-web" ] && [ $# -eq 1 ]; then
+    set -- singles-web 0.0.0.0 "${WEB_PORT:-8338}"
 fi
 
 exec gosu beets beet "$@"
