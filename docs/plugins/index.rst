@@ -120,6 +120,7 @@ databases. They share the following configuration options:
     rewrite
     scrub
     singles
+    sonovault
     smartplaylist
     sonosupdate
     spotify
@@ -159,6 +160,9 @@ Autotagger Extensions
 :doc:`mbpseudo <mbpseudo>`
     Search for releases and pseudo-releases in the MusicBrainz_ database.
 
+:doc:`sonovault <sonovault>`
+    Search for tracks (BPM, key, genre, label) in the Sonovault_ DJ catalogue.
+
 :doc:`spotify <spotify>`
     Search for releases in the Spotify_ database.
 
@@ -171,6 +175,7 @@ Autotagger Extensions
 
 .. _musicbrainz: https://www.musicbrainz.com
 
+.. _sonovault: https://sonovault.now/
 .. _spotify: https://open.spotify.com/
 
 .. _tidal: https://tidal.com/

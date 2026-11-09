@@ -38,10 +38,10 @@ match:
   strong_rec_thresh: 0.10
 
 paths:
-  # "July 2025/Artist - Title (Remixer Remix).aiff"
-  singleton: $month_folder/$artist - $title%sunique{}
-  default: $month_folder/$artist - $title%sunique{}
-  comp: $month_folder/$artist - $title%sunique{}
+  # "July 2025/Artist - Title (Remixer Remix).aiff"; no artist -> just the title
+  singleton: $month_folder/%if{$artist,$artist - }$title%sunique{}
+  default: $month_folder/%if{$artist,$artist - }$title%sunique{}
+  comp: $month_folder/%if{$artist,$artist - }$title%sunique{}
 
 singles:
   inbox: /music/inbox
@@ -95,4 +95,9 @@ deezer:
   # 0.3 -> floor 0.067: a perfect Deezer match still counts as strong when
   # MusicBrainz has nothing, but MusicBrainz wins when both match.
   source_weight: 0.3
+
+# Sonovault (DJ catalogue: BPM, Camelot key, genre, label): paste your own
+# API key on the services page; the plugin is enabled there once a key is set.
+sonovault:
+  apikey: ""
 

@@ -30,11 +30,14 @@ HINTS = {
     "spotify": "Client ID en secret komen uit het Spotify Developer Dashboard.",
     "chroma": "Vraag een gratis sleutel aan op acoustid.org/new-application.",
     "bandcamp": "beetcamp krijgt geen JSON van bandcamp.com; laat de plugin uit.",
+    "sonovault": "Maak een gratis key aan op sonovault.now (e-mail verifiëren).",
 }
 
 
-def _json(url: str, **kw) -> dict:
-    r = requests.get(url, timeout=TIMEOUT, headers=UA, **kw)
+def _json(url: str, headers: dict | None = None, **kw) -> dict:
+    r = requests.get(
+        url, timeout=TIMEOUT, headers={**UA, **(headers or {})}, **kw
+    )
     r.raise_for_status()
     return r.json()
 
@@ -170,7 +173,27 @@ def test_lastgenre(s: dict) -> str:
     return f"verbonden · tag 'techno' heeft {d['tag'].get('total', '?')} tags"
 
 
+def test_sonovault(s: dict) -> str:
+    if not s.get("apikey"):
+        raise ValueError("geen API key ingevuld")
+    d = _json(
+        "https://api.sonovault.now/v1/tracks/search",
+        params={"artist": "Daft Punk", "title": "One More Time", "limit": 1},
+        headers={**UA, "x-api-key": s["apikey"]},
+    )
+    hits = d.get("data") or []
+    first = hits[0] if hits else {}
+    extra = (
+        f" · bv. {first.get('title')} {first.get('bpm')} BPM "
+        f"{first.get('key_alphanumeric') or ''}"
+        if first
+        else ""
+    )
+    return f"verbonden · {len(hits)} treffer(s) voor Daft Punk - One More Time{extra}"
+
+
 TESTS: dict[str, Callable[[dict], str]] = {
+    "sonovault": test_sonovault,
     "musicbrainz": test_musicbrainz,
     "deezer": test_deezer,
     "discogs": test_discogs,

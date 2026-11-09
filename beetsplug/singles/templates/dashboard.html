@@ -40,6 +40,7 @@
     </label>
     <label class="pill"><input type="checkbox" id="loop" {% if state.status=='running' %}disabled{% endif %}><span>doorgaan tot de inbox leeg is</span></label>
     <label class="pill"><input type="checkbox" id="reset" {% if state.status=='running' %}disabled{% endif %}><span>overgeslagen opnieuw proberen</span></label>
+    <label class="pill" title="Draait beets met -v: alle zoekopdrachten en antwoorden per bron komen in de volledige log"><input type="checkbox" id="verbose" {% if state.status=='running' %}disabled{% endif %}><span>uitgebreide log</span></label>
   </div>
   <div class="row">
     <button class="btn btn--primary" id="primary" type="button" {% if state.status=='running' %}hidden{% endif %}><span aria-hidden="true">&#9654;</span> <span id="primary_text">Start</span></button>
@@ -78,7 +79,11 @@
   <ul class="events" id="events"></ul>
 </details>
 <details class="panel">
-  <summary>Volledige log (ruwe beets-uitvoer)</summary>
+  <summary>Volledige log (ruwe beets-uitvoer) <span class="muted" id="log_mode"></span></summary>
+  <div class="logbar">
+    <input class="input" type="search" id="log_filter" placeholder="filter op bestandsnaam of tekst" aria-label="Log filteren">
+    <a class="btn btn--small" href="{{ url_for('api_log') }}" download>log downloaden</a>
+  </div>
   <pre id="log"></pre>
 </details>
 <details class="panel">

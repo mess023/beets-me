@@ -107,3 +107,27 @@ def test_apply_plugin_form_keeps_beatport_off_without_token_file():
         {"on:beatport4": "1", "on:musicbrainz": "1"},
     )
     assert out["plugins"] == ["musicbrainz", "singles"]
+
+
+def test_parse_line_sources_event():
+    STATE["events"].clear()
+    line = (
+        "singles: sources|/inbox/a.flac|medium|"
+        "MusicBrainz: 10 kandidaten, beste 0.163 · Deezer: 0 kandidaten\n"
+    )
+    parse_line(line, {"/inbox/a.flac"}, "/inbox/a.flac")
+    ev = STATE["events"][0]
+    assert ev["kind"] == "sources"
+    assert ev["file"] == "a.flac"
+    assert "matig" in ev["text"]
+    assert "Deezer: 0" in ev["text"]
+
+
+def test_guess_artist_from_filename():
+    from beetsplug.singles import guess_from_filename
+
+    assert guess_from_filename(
+        "01 - Agents of Time & Darla Jade - Stay With Me (Original Mix)"
+    ) == ("Agents of Time & Darla Jade", "Stay With Me (Original Mix)")
+    assert guess_from_filename("00 - Next to Me") == ("", "Next to Me")
+    assert guess_from_filename("Artist - Title") == ("Artist", "Title")

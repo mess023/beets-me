@@ -70,6 +70,25 @@ def file_created(path: str | bytes) -> float:
     return getattr(st, "st_birthtime", None) or st.st_mtime
 
 
+def guess_from_filename(name: str) -> tuple[str, str]:
+    """('artist', 'title') from 'NN - Artist - Title' or 'Artist - Title';
+    ('', title) when the name carries no artist. Uses fromfilename's
+    patterns so both plugins agree."""
+    import re
+
+    from beetsplug.fromfilename import PATTERNS
+
+    for pattern in PATTERNS:
+        if m := re.match(pattern, name, re.IGNORECASE):
+            d = m.groupdict()
+            if (d.get("artist") or "").strip().isdigit():
+                continue  # 'NN - Title': the number is a track number
+            return (d.get("artist") or "").strip(), (
+                d.get("title") or ""
+            ).strip()
+    return "", name
+
+
 def month_folder(timestamp: float) -> str:
     d = datetime.fromtimestamp(timestamp)
     return f"{MONTHS[d.month - 1]} {d.year}"
@@ -110,6 +129,26 @@ def detect_key(path: str) -> str | None:
     return key_from_chroma(chroma)
 
 
+class _AlbumStandIn:
+    """Quacks like an Album for fetchart's sources; unknown fields are empty
+    instead of raising (Amazon reads ``asin``, others ``mb_albumid`` etc.)."""
+
+    def __init__(self, item: Item) -> None:
+        self._item = item
+        self.albumartist = item.albumartist or item.artist
+        self.album = item.album or item.title
+        self.artpath = None
+
+    def __getattr__(self, name: str) -> object:
+        return self._item.get(name, "")
+
+    def get(self, key: str, default: object = None) -> object:
+        return self._item.get(key, default)
+
+    def items(self) -> SimpleNamespace:
+        return SimpleNamespace(get=lambda: self._item)
+
+
 class SinglesPlugin(BeetsPlugin):
     item_types: ClassVar[dict[str, types.Type]] = {"creation_date": types.DATE}
 
@@ -130,6 +169,7 @@ class SinglesPlugin(BeetsPlugin):
         if self.config["auto_art"].get(bool):
             self.register_listener("item_imported", self._singleton_art)
         self.register_listener("item_imported", self._mark_source)
+        self.register_listener("import_task_choice", self._log_sources)
 
     def _mark_source(self, lib: Library, item: Item) -> None:
         """Record where the metadata came from; 'none' = imported as-is, so
@@ -163,6 +203,18 @@ class SinglesPlugin(BeetsPlugin):
         for item in task.items:
             if not item.get("creation_date"):
                 item.creation_date = file_created(item.path)
+            # fromfilename only kicks in when the *title* is empty; a file
+            # with a title tag but no artist would be searched title-only.
+            if not item.artist:
+                name = os.path.splitext(os.path.basename(item.filepath))[0]
+                artist, title = guess_from_filename(name)
+                if artist:
+                    item.artist = artist
+                    if not item.title:
+                        item.title = title
+                    self._log.info(
+                        "artist from filename: {} - {}", artist, item.title
+                    )
 
     def _month_folder(self, item: Item) -> str:
         return month_folder(item.get("creation_date") or item.added)
@@ -196,21 +248,46 @@ class SinglesPlugin(BeetsPlugin):
             return
         # fetchart works on albums; a stand-in with the fields its sources
         # read lets it search for the release this track appears on.
-        stand_in = SimpleNamespace(
-            albumartist=item.albumartist or item.artist,
-            album=item.album or item.title,
-            mb_albumid=item.mb_albumid,
-            mb_releasegroupid=item.mb_releasegroupid,
-            artpath=None,
-            get=lambda k, d=None: item.get(k, d),
-            items=lambda: SimpleNamespace(get=lambda: item),
-        )
-        candidate = fetchart.art_for_album(stand_in, None)
-        if candidate is None or candidate.path is None:
-            self._log.info("no cover art found for {}", item)
+        stand_in = _AlbumStandIn(item)
+        try:
+            candidate = fetchart.art_for_album(stand_in, None)
+            if candidate is None or candidate.path is None:
+                self._log.info("no cover art found for {}", item)
+                return
+            art.embed_item(
+                self._log, item, candidate.path, maxwidth=fetchart.maxwidth
+            )
+        except Exception as exc:  # art must never abort the import
+            self._log.warning("cover art failed for {}: {}", item, exc)
             return
-        art.embed_item(
-            self._log, item, candidate.path, maxwidth=fetchart.maxwidth
-        )
         with contextlib.suppress(OSError):
             os.remove(candidate.path)
+
+    # --- which sources answered for this track --------------------------------
+
+    def _log_sources(self, session: ImportSession, task: ImportTask) -> None:
+        """One structured line per singleton: candidates and best distance per
+        metadata source, so the web UI can show what was actually consulted."""
+        if task.is_album:
+            return
+        per: dict[str, list[float]] = {}
+        for cand in task.candidates:
+            per.setdefault(cand.info.data_source or "?", []).append(
+                float(cand.distance)
+            )
+        enabled = [
+            p.data_source
+            for p in plugins.find_plugins()
+            if hasattr(p, "item_candidates") and hasattr(p, "data_source")
+        ]
+        parts = [
+            f"{src}: {len(per[src])} kandidaten, beste {min(per[src]):.3f}"
+            if src in per
+            else f"{src}: 0 kandidaten"
+            for src in sorted(set(enabled) | set(per))
+        ]
+        rec = task.rec.name if task.rec else "none"
+        self._log.info(
+            "sources|{}|{}|{}", task.item.path.decode(errors="replace"), rec,
+            " · ".join(parts),
+        )  # fmt: skip

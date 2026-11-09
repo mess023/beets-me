@@ -75,7 +75,7 @@
     const now = running && s.current.length ? "Nu: " + s.current.join(", ") : "";
     if ($("now").textContent !== now) $("now").textContent = now;
 
-    if (running) { batchInput.disabled = true; loopInput.disabled = true; resetInput.disabled = true; }
+    if (running) { batchInput.disabled = true; loopInput.disabled = true; resetInput.disabled = true; $("verbose").disabled = true; } else { $("verbose").disabled = false; }
     renderButton();
 
     $("edm_hint").hidden = s.edm_sources.length > 0;
@@ -106,7 +106,7 @@
     $("retry_all").disabled = running;
     $("skipped_count").textContent = s.skipped.length;
 
-    const icons = { added: "✓", skipped: "⚠", warn: "·", error: "✖", batch: "▶" };
+    const icons = { added: "✓", skipped: "⚠", warn: "·", error: "✖", batch: "▶", sources: "≡" };
     $("events_count").textContent = s.events.length;
     setList($("events"), String(s.events.length) + (s.events[0] ? s.events[0].t + s.events[0].text : ""), s.events.length ? s.events.map((e) => `
       <li class="ev-${e.kind}"><span class="t">${e.t}</span><span class="i" aria-hidden="true">${icons[e.kind] || "·"}</span>
@@ -115,15 +115,21 @@
 
     const log = $("log");
     const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
-    if (log.textContent !== s.log) { log.textContent = s.log; if (stick) log.scrollTop = log.scrollHeight; }
+    const q = $("log_filter").value.trim().toLowerCase();
+    const text = q ? s.log.split("\n").filter((l) => l.toLowerCase().includes(q)).join("\n") : s.log;
+    if (log.textContent !== text) { log.textContent = text; if (stick) log.scrollTop = log.scrollHeight; }
+    $("log_mode").textContent = s.verbose ? "· uitgebreid (-v)" : "";
   }
+  $("log_filter").addEventListener("input", render);
+  try { if (localStorage.verbose !== undefined) $("verbose").checked = localStorage.verbose === "1"; } catch (e) {}
+  $("verbose").addEventListener("change", () => { try { localStorage.verbose = $("verbose").checked ? "1" : "0"; } catch (e) {} });
 
   async function post(url, body) {
     const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
     state = await r.json(); offline = false; render();
   }
   btn.addEventListener("click", () => post("/api/start", {
-    batch_size: parseInt(batchInput.value || "1", 10), loop: loopInput.checked, reset: resetInput.checked,
+    batch_size: parseInt(batchInput.value || "1", 10), loop: loopInput.checked, reset: resetInput.checked, verbose: $("verbose").checked,
   }).then(() => { resetInput.checked = false; $("events_panel").open = true; if (!btnStop.hidden) btnStop.focus(); }));
   btnStop.addEventListener("click", () => {
     btnStop.disabled = true; stopText.textContent = "Stoppen…";
@@ -131,7 +137,7 @@
   });
   $("skipped").addEventListener("click", (e) => { const b = e.target.closest("[data-retry]"); if (b) post("/api/retry", { path: b.dataset.retry }); });
   $("retry_all").addEventListener("click", () => post("/api/retry", {}));
-  $("rematch").addEventListener("click", () => post("/api/rematch", {}).then(() => { $("events_panel").open = true; }));
+  $("rematch").addEventListener("click", () => post("/api/rematch", { verbose: $("verbose").checked }).then(() => { $("events_panel").open = true; }));
 
   async function poll() {
     try {

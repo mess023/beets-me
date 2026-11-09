@@ -41,6 +41,14 @@ PLUGINS: dict[str, tuple[str, str, list[tuple[str, str, bool]]]] = {
         "Discogs: label, catalogusnummer, remixers (vinyl, white labels)",
         [("user_token", "Personal access token", True)],
     ),
+    "sonovault": (
+        "Metadatabronnen",
+        (
+            "Sonovault: DJ-catalogus met BPM, key (Camelot), genre, label, ISRC; "
+            "gratis 1000 zoekopdrachten per maand"
+        ),
+        [("apikey", "API key (sonovault.now → dashboard → keys)", True)],
+    ),
     "musicbrainz": ("Metadatabronnen", "Gratis basisbron; ISRC, ID's", []),
     "deezer": ("Metadatabronnen", "Gratis, geen sleutel nodig", []),
     "spotify": (
@@ -97,11 +105,12 @@ PLUGINS: dict[str, tuple[str, str, list[tuple[str, str, bool]]]] = {
     ),
 }
 ALWAYS_ON = {"singles"}
-EDM_SOURCES = ("beatport4", "discogs")
+EDM_SOURCES = ("beatport4", "discogs", "sonovault")
 # Plugins that prompt interactively (and so hang a quiet batch) when this
 # credential is missing: only enable them once it is set.
 NEEDS_CREDENTIAL = {
     "discogs": "user_token",
+    "sonovault": "apikey",
     "spotify": "client_id",
     "beatport4": "tokenfile",  # must point to a valid token file, see below
 }
@@ -210,7 +219,7 @@ def abbr_filter(text: str) -> markupsafe.Markup:
 
 STATE: dict[str, Any] = {
     "status": "idle",  # idle | running | stopped | done
-    "log": deque(maxlen=500),
+    "log": deque(maxlen=3000),
     "events": deque(maxlen=200),
     "skipped": {},  # path -> reason
     "attempted": set(),
@@ -223,7 +232,16 @@ STATE: dict[str, Any] = {
     "current": [],
     "proc": None,
     "stop": False,
+    "verbose": False,
 }
+
+
+def log_file() -> Path:
+    d = Path(config.config_dir()) / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "import-last.log"
+
+
 _lock = threading.Lock()
 
 
@@ -336,6 +354,17 @@ def parse_line(line: str, batch: set[str], current: str) -> str:
         if label.startswith("Importing as-is"):
             label = "geen sterke online match: toegevoegd met eigen tags"
         _event("added", label, Path(current).name)
+    elif stripped.startswith("singles: sources|"):
+        _, path, rec, parts = stripped.split("|", 3)
+        recs = {
+            "strong": "sterk",
+            "medium": "matig",
+            "low": "zwak",
+            "none": "geen",
+        }
+        _event(
+            "sources", f"match {recs.get(rec, rec)} · {parts}", Path(path).name
+        )
     elif stripped.startswith("Error in '"):
         plugin = stripped.split("'")[1].split(".")[0]
         _event(
@@ -361,6 +390,7 @@ def parse_line(line: str, batch: set[str], current: str) -> str:
 
 
 def _run(batch_size: int, loop: bool, rematch: bool = False) -> None:
+    logf = log_file().open("w", encoding="utf-8")
     try:
         while not STATE["stop"]:
             if rematch:
@@ -380,6 +410,8 @@ def _run(batch_size: int, loop: bool, rematch: bool = False) -> None:
             _event("batch", label)
             STATE["log"].append(f"--- {label} ---")
             cmd = [sys.executable, "-m", "beets"]
+            if STATE["verbose"]:
+                cmd.append("-v")
             if config_path().exists():
                 cmd += ["-c", str(config_path())]
             # an expired Beatport token would make the plugin prompt and
@@ -413,12 +445,15 @@ def _run(batch_size: int, loop: bool, rematch: bool = False) -> None:
             current = ""
             for line in proc.stdout:
                 STATE["log"].append(line.rstrip())
+                logf.write(line)
+                logf.flush()
                 current = parse_line(line, names, current)
             proc.wait()
             STATE["done"] += len(batch)
             if not loop:
                 break
     finally:
+        logf.close()
         STATE["proc"] = None
         STATE["current"] = []
         STATE["finished_at"] = time.time()
@@ -427,11 +462,16 @@ def _run(batch_size: int, loop: bool, rematch: bool = False) -> None:
 
 
 def start_run(
-    batch_size: int, loop: bool, reset: bool, rematch: bool = False
+    batch_size: int,
+    loop: bool,
+    reset: bool,
+    rematch: bool = False,
+    verbose: bool = False,
 ) -> bool:
     with _lock:
         if STATE["status"] == "running":
             return False
+        STATE["verbose"] = verbose
         if reset:
             STATE["attempted"].clear()
             STATE["skipped"].clear()
@@ -536,6 +576,7 @@ def status_payload() -> dict:
         "edm_sources": edm_sources_active(),
         "events": list(s["events"]),
         "log": "\n".join(s["log"]),
+        "verbose": s["verbose"],
         "recent": recent_tracks(),
     }
 
@@ -568,6 +609,7 @@ def api_start() -> flask.Response:
         int(data.get("batch_size") or 1),
         bool(data.get("loop")),
         bool(data.get("reset")),
+        verbose=bool(data.get("verbose")),
     )
     return flask.jsonify(started=started, **status_payload())
 
@@ -576,6 +618,17 @@ def api_start() -> flask.Response:
 def api_stop() -> flask.Response:
     stop_run()
     return flask.jsonify(status_payload())
+
+
+@app.route("/api/log.txt")
+def api_log() -> flask.Response:
+    f = log_file()
+    text = f.read_text(encoding="utf-8", errors="replace") if f.exists() else ""
+    resp = flask.Response(text, mimetype="text/plain; charset=utf-8")
+    resp.headers["Content-Disposition"] = (
+        "attachment; filename=beets-import.log"
+    )
+    return resp
 
 
 @app.route("/api/test/<plugin>", methods=["POST"])
@@ -596,7 +649,10 @@ def api_test(plugin: str) -> flask.Response:
 @app.route("/api/rematch", methods=["POST"])
 def api_rematch() -> flask.Response:
     """Re-import every item imported without an online match."""
-    started = start_run(1, False, False, rematch=True)
+    data = flask.request.get_json(silent=True) or {}
+    started = start_run(
+        1, False, False, rematch=True, verbose=bool(data.get("verbose"))
+    )
     return flask.jsonify(started=started, **status_payload())
 
 
