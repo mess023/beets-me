@@ -82,31 +82,39 @@ def test_spotify(s: dict) -> str:
 
 
 def test_beatport4(s: dict) -> str:
-    import json
     import time
 
     from beetsplug.beatport4.client import Beatport4Client
     from beetsplug.beatport4.models import BeatportOAuthToken
 
+    from .ui import parse_beatport_token
+
     if not s.get("token_json"):
-        raise ValueError("geen token geplakt (JSON van /v4/auth/o/token/)")
-    token = BeatportOAuthToken.from_api_response(json.loads(s["token_json"]))
+        raise ValueError("geen token geplakt (JSON, Bearer-header of cURL)")
+    parsed = parse_beatport_token(s["token_json"])
+    detected = parsed.pop("detected")
+    token = BeatportOAuthToken.from_api_response(parsed)
     left = int(token.expires_at - time.time())
     if left <= 0:
         raise ValueError(
             "token is verlopen; plak een nieuwe "
             "(beets-beatport4 ververst hem niet zelf)"
         )
+    # Check the token ourselves first: the plugin's client would otherwise
+    # fall back to the (dead) username/password login and report HTTP 400.
+    account = _json(
+        "https://api.beatport.com/v4/my/account/",
+        headers={"Authorization": f"Bearer {token.access_token}"},
+    )
     client = Beatport4Client(
         log=logging.getLogger("beets.singles.connect"), beatport_token=token
     )
-    account = client.get_my_account()
     query = "Agents of Time Stay With Me"
     hits = list(client.search(query, model="tracks"))
     first = f" · bv. {hits[0].name} ({hits[0].mix_name})" if hits else ""
     return (
-        f"ingelogd als {getattr(account, 'username', '?')} · {len(hits)} tracks "
-        f"voor '{query}'{first} · token nog {left // 3600} u "
+        f"ingelogd als {account.get('username', '?')} · {len(hits)} tracks "
+        f"voor '{query}'{first} · {detected} · token nog {left // 3600} u "
         f"{left % 3600 // 60} min geldig"
     )
 

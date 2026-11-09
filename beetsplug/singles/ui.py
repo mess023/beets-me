@@ -6,7 +6,9 @@ Started with ``beet singles-web [host] [port]``. Replaces the upstream
 
 from __future__ import annotations
 
+import base64
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -127,18 +129,67 @@ def beatport_token_file(cfg: dict | None = None) -> Path:
     )
 
 
+_BEARER_RE = re.compile(r"(?i)bearer\s+([A-Za-z0-9._~+/=-]+)")
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9._~+/=-]{16,}$")
+DEFAULT_TOKEN_TTL = 36000  # Beatport issues 10-hour tokens
+
+
+def _jwt_exp(token: str) -> float | None:
+    """`exp` claim of a JWT access token, or None when it is not a JWT."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        return float(claims["exp"])
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def parse_beatport_token(text: str) -> dict:
-    """Validate the pasted /auth/o/token/ JSON; returns the normalised dict
-    beets-beatport4 reads (access_token, refresh_token, expires_at)."""
-    data = json.loads(text)
-    for key in ("access_token", "refresh_token"):
-        if not data.get(key):
-            raise ValueError(f"'{key}' ontbreekt in de JSON")
-    if "expires_at" not in data:
-        if "expires_in" not in data:
-            raise ValueError("'expires_in' of 'expires_at' ontbreekt")
-        data["expires_at"] = time.time() + int(data["expires_in"])
-    return data
+    """Turn whatever the user pasted into the dict beets-beatport4 reads
+    (access_token, refresh_token, expires_at; refresh_token is only stored,
+    never used, so '' is fine). Accepts: the /auth/o/token/ JSON, a bare
+    access token, an 'Authorization: Bearer …' header value, or a
+    'Copy as cURL' command containing that header. Adds 'detected'."""
+    text = text.strip()
+    if text.startswith("{"):
+        data = json.loads(text)
+        if not data.get("access_token"):
+            raise ValueError("'access_token' ontbreekt in de JSON")
+        data.setdefault("refresh_token", "")
+        if "expires_at" not in data:
+            if "expires_in" not in data:
+                raise ValueError("'expires_in' of 'expires_at' ontbreekt")
+            data["expires_at"] = time.time() + int(data["expires_in"])
+        data["detected"] = "token-JSON"
+        return data
+    if m := _BEARER_RE.search(text):
+        token = m.group(1)
+        detected = (
+            "cURL-commando"
+            if text.lstrip().startswith("curl")
+            else "Bearer-header"
+        )
+    elif _TOKEN_RE.match(text):
+        token, detected = text, "los access token"
+    else:
+        raise ValueError(
+            "niet herkend: plak de token-JSON, een 'Bearer …'-header of een "
+            "'Copy as cURL'-commando"
+        )
+    exp = _jwt_exp(token)
+    if exp:
+        detected += " (JWT, vervaltijd uit token)"
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "refresh_token": "",
+        "expires_in": DEFAULT_TOKEN_TTL,
+        "expires_at": exp or time.time() + DEFAULT_TOKEN_TTL,
+        "detected": detected,
+    }
 
 
 def beatport_token_status(cfg: dict | None = None) -> dict:
@@ -694,11 +745,18 @@ def plugins_page() -> str:
     cfg = load_yaml()
     saved = None
     token_error = None
+    token_note = None
     if flask.request.method == "POST":
         pasted = (flask.request.form.get(BEATPORT_TOKEN_FIELD) or "").strip()
         if pasted:
             try:
                 data = parse_beatport_token(pasted)
+                token_note = (
+                    f"herkend als {data.pop('detected')}, geldig tot "
+                    + time.strftime(
+                        "%Y-%m-%d %H:%M", time.localtime(data["expires_at"])
+                    )
+                )
                 path = Path(config.config_dir()) / "beatport_token.json"
                 path.write_text(json.dumps(data), encoding="utf-8")
                 section = cfg.get("beatport4") or {}
@@ -727,6 +785,7 @@ def plugins_page() -> str:
         testable=set(connect_tests()),
         beatport_token=beatport_token_status(cfg),
         token_error=token_error,
+        token_note=token_note,
         terms=TERMS,
     )
 

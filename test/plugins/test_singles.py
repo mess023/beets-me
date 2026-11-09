@@ -85,7 +85,18 @@ def test_parse_line_plugin_error_is_a_warning_not_a_skip():
     assert "Bandcamp" in STATE["events"][0]["text"]
 
 
-def test_beatport_token_validation():
+def _jwt(exp: int) -> str:
+    import base64
+    import json
+
+    def seg(d: dict) -> str:
+        raw = base64.urlsafe_b64encode(json.dumps(d).encode()).decode()
+        return raw.rstrip("=")
+
+    return f"{seg({'alg': 'HS256'})}.{seg({'exp': exp, 'sub': '1'})}.sig"
+
+
+def test_beatport_token_parser_accepts_json_bearer_curl_and_jwt():
     import json
     import time
 
@@ -96,9 +107,31 @@ def test_beatport_token_validation():
             {"access_token": "a", "refresh_token": "r", "expires_in": 60}
         )
     )
+    assert good["detected"] == "token-JSON"
     assert good["expires_at"] > time.time()
-    with pytest.raises(ValueError, match="refresh_token"):
-        parse_beatport_token(json.dumps({"access_token": "a"}))
+
+    bearer = parse_beatport_token("Bearer abcdefghijklmnopqrstuvwxyz0123")
+    assert bearer["access_token"] == "abcdefghijklmnopqrstuvwxyz0123"
+    assert bearer["refresh_token"] == ""
+    assert bearer["detected"] == "Bearer-header"
+    assert bearer["expires_at"] - time.time() > 35000
+
+    curl = parse_beatport_token(
+        "curl 'https://api.beatport.com/v4/my/account/' "
+        "-H 'Accept: application/json' -H 'Authorization: Bearer tok_ABCDEFGHIJKLMNOP' "
+        "--compressed"
+    )
+    assert curl["access_token"] == "tok_ABCDEFGHIJKLMNOP"
+    assert curl["detected"] == "cURL-commando"
+
+    exp = int(time.time()) + 1234
+    jwt = parse_beatport_token(_jwt(exp))
+    assert jwt["expires_at"] == exp
+    assert "JWT" in jwt["detected"]
+    assert jwt["detected"].startswith("los access token")
+
+    with pytest.raises(ValueError, match="niet herkend"):
+        parse_beatport_token("dit is geen token")
 
 
 def test_apply_plugin_form_keeps_beatport_off_without_token_file():

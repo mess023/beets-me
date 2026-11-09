@@ -52,20 +52,27 @@
           {% endfor %}
           {% if name == 'beatport4' %}
           <div class="field">
-            <span>Token-JSON van <code>api.beatport.com/v4/auth/o/token/</code></span>
-            <textarea class="input" name="beatport4.token_json" id="bp_token" rows="3" spellcheck="false" placeholder='{"access_token": "...", "refresh_token": "...", "expires_in": 36000, ...}'></textarea>
+            <span>Beatport-token: plak de token-JSON, een <code>Authorization: Bearer …</code>-waarde of een "Copy as cURL"-commando</span>
+            <textarea class="input" name="beatport4.token_json" id="bp_token" rows="3" spellcheck="false" placeholder='{"access_token": "...", ...}  —  of  —  Bearer eyJ...  —  of  —  curl "https://api.beatport.com/v4/my/account/" -H "Authorization: Bearer eyJ..."'></textarea>
             <span class="muted">
-              <label class="btn btn--small" style="display:inline-flex">bestand kiezen<input type="file" id="bp_file" accept=".json,application/json" hidden></label>
-              · {{ beatport_token.message }}{% if token_error %} · <span class="note">ongeldig: {{ token_error }}</span>{% endif %}
+              <label class="btn btn--small" style="display:inline-flex">bestand kiezen<input type="file" id="bp_file" accept=".json,application/json,.txt" hidden></label>
+              · {{ beatport_token.message }}{% if token_note %} · <span class="saved">{{ token_note }}</span>{% endif %}{% if token_error %} · <span class="note">ongeldig: {{ token_error }}</span>{% endif %}
             </span>
             <details class="panel" style="margin-top:var(--space-1)">
-              <summary>Hoe kom ik aan de token? (3 stappen)</summary>
-              <ol class="muted" style="margin:0;padding:var(--space-2) var(--space-4)">
-                <li>Log in op <code>beatport.com</code> in je browser en open de developer tools (F12) → tabblad <strong>Network</strong>.</li>
-                <li>Herlaad de pagina en filter op <code>auth/o/token</code>; klik de aanvraag naar <code>api.beatport.com/v4/auth/o/token/</code> aan en open <strong>Response</strong>.</li>
-                <li>Kopieer de volledige JSON, plak hem hierboven (of sla hem op als <code>beatport_token.json</code> en kies het bestand), zet de schakelaar aan en klik Opslaan. Test daarna de verbinding.</li>
+              <summary>Hoe kom ik aan de token? (twee routes)</summary>
+              <p class="muted" style="margin:var(--space-2) var(--space-4) 0"><strong>Route A — token-JSON (met refresh_token)</strong></p>
+              <ol class="muted" style="margin:0;padding:var(--space-1) var(--space-4)">
+                <li>Open op <code>beatport.com</code> de developer tools (F12) → <strong>Network</strong> en zet <strong>Preserve log</strong> aan.</li>
+                <li>Log <strong>uit</strong> en opnieuw <strong>in</strong>; filter op <code>auth/o/token</code>. Er verschijnt een <code>POST api.beatport.com/v4/auth/o/token/</code> (bij een al ingelogde sessie komt die niet voor).</li>
+                <li>Open <strong>Response</strong>, kopieer de volledige JSON en plak hem hierboven (of sla hem op als <code>beatport_token.json</code> en kies het bestand).</li>
               </ol>
-              <p class="muted" style="margin:0 var(--space-4) var(--space-2)">Let op: beets-beatport4 1.4.0 ververst de token niet zelf; na de vervaltijd (<code>expires_in</code>, meestal 10 uur) plak je een nieuwe. Tot die tijd blijft Beatport gewoon uit en lopen batches door met de andere bronnen.</p>
+              <p class="muted" style="margin:var(--space-2) var(--space-4) 0"><strong>Route B — Bearer-header (sneller, geen refresh_token)</strong></p>
+              <ol class="muted" style="margin:0;padding:var(--space-1) var(--space-4)">
+                <li>Klik in <strong>Network</strong> een willekeurige <code>api.beatport.com/v4/…</code>-aanvraag met status 200 aan (bv. <code>/v4/my/account/</code>).</li>
+                <li>Tab <strong>Headers</strong> → <em>Request Headers</em> → kopieer de waarde van <code>Authorization</code> (<code>Bearer eyJ…</code>), of rechtsklik de aanvraag → <em>Copy</em> → <em>Copy as cURL</em>.</li>
+                <li>Plak hierboven; de vervaltijd wordt uit de JWT gelezen (anders 10 uur aangenomen).</li>
+              </ol>
+              <p class="muted" style="margin:0 var(--space-4) var(--space-2)">Zet daarna de schakelaar aan, klik Opslaan en <strong>Test verbinding</strong>. beets-beatport4 1.4.0 ververst tokens niet zelf (ook niet met refresh_token); na de vervaltijd plak je een nieuwe. Tot die tijd blijft Beatport uit en lopen batches door met de andere bronnen.</p>
             </details>
           </div>
           {% endif %}
