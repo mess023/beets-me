@@ -6,6 +6,8 @@
 services:
   beets:
     image: ghcr.io/mess023/beets-me:test-singles-pipeline
+    # the tag is reused on every push, so always fetch the latest build
+    pull_policy: always
     container_name: beets-singles
     environment:
       PUID: "568"
