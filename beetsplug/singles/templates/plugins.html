@@ -4,6 +4,13 @@
 <section class="card">
   <h1 style="font-size:var(--fs-l)">Plugins &amp; diensten</h1>
   <p class="muted" style="margin:0">Schrijft naar <code>{{ path }}</code> · geldt vanaf de volgende batch. Lege velden laten de opgeslagen waarde staan.</p>
+  {% if not edm_sources %}
+  <div class="hint" style="margin-top:var(--space-3)">
+    <strong>Eerste stap voor elektronische muziek:</strong> vul hieronder een Beatport-login (gebruikersnaam + wachtwoord) of een Discogs-token in en zet de schakelaar aan. Zonder deze bronnen vindt beets de meeste EDM-releases niet en worden nummers met hun eigen tags toegevoegd.
+  </div>
+  {% else %}
+  <p class="saved" style="margin-top:var(--space-2)">Actieve EDM-bron: {{ edm_sources|join(', ') }}</p>
+  {% endif %}
   <form method="post" id="plugins_form">
     {% for group, names in groups.items() %}
     <h2 class="group-title">{{ group }}</h2>
@@ -25,7 +32,9 @@
         </td>
         <td class="name">{{ name }}</td>
         <td class="desc">{{ desc|abbr }}
-          {% if name in needs_credential and not (cfg.get(name) or {}).get(needs_credential[name]) %}
+          {% if name == 'beatport4' %}
+            {% if not beatport_token.ok %}<div class="note">staat uit tot er een geldige token is geplakt</div>{% endif %}
+          {% elif name in needs_credential and not (cfg.get(name) or {}).get(needs_credential[name]) %}
           <div class="note">staat uit tot er een sleutel is ingevuld</div>{% endif %}
         </td>
         <td class="settings"><div>
@@ -41,6 +50,31 @@
             {% endif %}
           </label>
           {% endfor %}
+          {% if name == 'beatport4' %}
+          <div class="field">
+            <span>Token-JSON van <code>api.beatport.com/v4/auth/o/token/</code></span>
+            <textarea class="input" name="beatport4.token_json" id="bp_token" rows="3" spellcheck="false" placeholder='{"access_token": "...", "refresh_token": "...", "expires_in": 36000, ...}'></textarea>
+            <span class="muted">
+              <label class="btn btn--small" style="display:inline-flex">bestand kiezen<input type="file" id="bp_file" accept=".json,application/json" hidden></label>
+              · {{ beatport_token.message }}{% if token_error %} · <span class="note">ongeldig: {{ token_error }}</span>{% endif %}
+            </span>
+            <details class="panel" style="margin-top:var(--space-1)">
+              <summary>Hoe kom ik aan de token? (3 stappen)</summary>
+              <ol class="muted" style="margin:0;padding:var(--space-2) var(--space-4)">
+                <li>Log in op <code>beatport.com</code> in je browser en open de developer tools (F12) → tabblad <strong>Network</strong>.</li>
+                <li>Herlaad de pagina en filter op <code>auth/o/token</code>; klik de aanvraag naar <code>api.beatport.com/v4/auth/o/token/</code> aan en open <strong>Response</strong>.</li>
+                <li>Kopieer de volledige JSON, plak hem hierboven (of sla hem op als <code>beatport_token.json</code> en kies het bestand), zet de schakelaar aan en klik Opslaan. Test daarna de verbinding.</li>
+              </ol>
+              <p class="muted" style="margin:0 var(--space-4) var(--space-2)">Let op: beets-beatport4 1.4.0 ververst de token niet zelf; na de vervaltijd (<code>expires_in</code>, meestal 10 uur) plak je een nieuwe. Tot die tijd blijft Beatport gewoon uit en lopen batches door met de andere bronnen.</p>
+            </details>
+          </div>
+          {% endif %}
+          {% if name in testable %}
+          <div class="testrow">
+            <button type="button" class="btn btn--small test-btn" data-plugin="{{ name }}" title="Doet één echte aanvraag met de ingevulde (ook nog niet opgeslagen) instellingen">Test verbinding</button>
+            <span class="test-result" id="test-{{ name }}" role="status"></span>
+          </div>
+          {% endif %}
         </div></td>
       </tr>
       {% endfor %}
@@ -59,6 +93,27 @@
 <script>
   document.getElementById("plugins_form").addEventListener("change", function () {
     document.getElementById("save_state").innerHTML = '<span class="dirty">Nog niet opgeslagen</span>';
+  });
+  var bpFile = document.getElementById("bp_file");
+  if (bpFile) bpFile.addEventListener("change", function () {
+    var f = bpFile.files[0]; if (!f) return;
+    f.text().then(function (t) { document.getElementById("bp_token").value = t; document.getElementById("plugins_form").dispatchEvent(new Event("change")); });
+  });
+  document.querySelectorAll(".test-btn").forEach(function (b) {
+    b.addEventListener("click", async function () {
+      var name = b.dataset.plugin, out = document.getElementById("test-" + name), settings = {};
+      document.querySelectorAll('[name^="' + name + '."]').forEach(function (i) {
+        var v = i.value.trim(); if (v) settings[i.name.slice(name.length + 1)] = v;
+      });
+      b.disabled = true; out.className = "test-result"; out.textContent = "bezig… (max 15 s)";
+      try {
+        var r = await fetch("/api/test/" + name, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
+        var d = await r.json();
+        out.className = "test-result " + (d.ok ? "ok" : "fail");
+        out.textContent = (d.ok ? "✓ " : "✖ ") + d.message + (d.hint ? " — " + d.hint : "");
+      } catch (e) { out.className = "test-result fail"; out.textContent = "✖ geen antwoord van de server"; }
+      b.disabled = false;
+    });
   });
   document.querySelectorAll(".secret__eye").forEach(function (b) {
     b.addEventListener("click", function () {

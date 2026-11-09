@@ -6,6 +6,7 @@ Started with ``beet singles-web [host] [port]``. Replaces the upstream
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import threading
@@ -27,12 +28,20 @@ AUDIO_EXTS = {
 # Plugin catalogue for the settings page, grouped by function.
 # name -> (group, description, [(config key, label, is_secret)])
 PLUGINS: dict[str, tuple[str, str, list[tuple[str, str, bool]]]] = {
-    "musicbrainz": ("Metadatabronnen", "Gratis basisbron; ISRC, ID's", []),
+    "beatport4": (
+        "Metadatabronnen",
+        (
+            "Beatport: beste bron voor elektronische muziek; zet mixnaam in de "
+            "titel (onofficiële API via een geplakte OAuth-token)"
+        ),
+        [],  # the token is handled separately, see BEATPORT_TOKEN_FIELD
+    ),
     "discogs": (
         "Metadatabronnen",
-        "Label, catalogusnummer, remixers (vinyl, white labels)",
+        "Discogs: label, catalogusnummer, remixers (vinyl, white labels)",
         [("user_token", "Personal access token", True)],
     ),
+    "musicbrainz": ("Metadatabronnen", "Gratis basisbron; ISRC, ID's", []),
     "deezer": ("Metadatabronnen", "Gratis, geen sleutel nodig", []),
     "spotify": (
         "Metadatabronnen",
@@ -42,14 +51,13 @@ PLUGINS: dict[str, tuple[str, str, list[tuple[str, str, bool]]]] = {
             ("client_secret", "Client secret", True),
         ],
     ),
-    "bandcamp": ("Metadatabronnen", "Bandcamp via externe plugin beetcamp", []),
-    "beatport4": (
+    "bandcamp": (
         "Metadatabronnen",
-        "Beatport (onofficiële API, kan breken); zet mixnaam in de titel",
-        [
-            ("username", "Gebruikersnaam", False),
-            ("password", "Wachtwoord", True),
-        ],
+        (
+            "Bandcamp (beetcamp 0.26.0) werkt momenteel niet: bandcamp.com geeft "
+            "geen JSON terug"
+        ),
+        [],
     ),
     "chroma": (
         "Herkenning",
@@ -89,13 +97,66 @@ PLUGINS: dict[str, tuple[str, str, list[tuple[str, str, bool]]]] = {
     ),
 }
 ALWAYS_ON = {"singles"}
+EDM_SOURCES = ("beatport4", "discogs")
 # Plugins that prompt interactively (and so hang a quiet batch) when this
 # credential is missing: only enable them once it is set.
 NEEDS_CREDENTIAL = {
     "discogs": "user_token",
     "spotify": "client_id",
-    "beatport4": "username",
+    "beatport4": "tokenfile",  # must point to a valid token file, see below
 }
+BEATPORT_TOKEN_FIELD = "beatport4.token_json"
+
+
+def beatport_token_file(cfg: dict | None = None) -> Path:
+    cfg = load_yaml() if cfg is None else cfg
+    stored = (cfg.get("beatport4") or {}).get("tokenfile")
+    return (
+        Path(stored)
+        if stored
+        else Path(config.config_dir()) / "beatport_token.json"
+    )
+
+
+def parse_beatport_token(text: str) -> dict:
+    """Validate the pasted /auth/o/token/ JSON; returns the normalised dict
+    beets-beatport4 reads (access_token, refresh_token, expires_at)."""
+    data = json.loads(text)
+    for key in ("access_token", "refresh_token"):
+        if not data.get(key):
+            raise ValueError(f"'{key}' ontbreekt in de JSON")
+    if "expires_at" not in data:
+        if "expires_in" not in data:
+            raise ValueError("'expires_in' of 'expires_at' ontbreekt")
+        data["expires_at"] = time.time() + int(data["expires_in"])
+    return data
+
+
+def beatport_token_status(cfg: dict | None = None) -> dict:
+    """{'ok': bool, 'expires': 'YYYY-MM-DD HH:MM' | None, 'message': str}."""
+    path = beatport_token_file(cfg)
+    if not path.exists():
+        return {"ok": False, "expires": None, "message": "geen token geplakt"}
+    try:
+        data = parse_beatport_token(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as e:
+        return {
+            "ok": False,
+            "expires": None,
+            "message": f"tokenbestand ongeldig: {e}",
+        }
+    expires = time.strftime(
+        "%Y-%m-%d %H:%M", time.localtime(data["expires_at"])
+    )
+    ok = data["expires_at"] > time.time() + 60
+    return {
+        "ok": ok,
+        "expires": expires,
+        "message": f"token geldig tot {expires}"
+        if ok
+        else f"token verlopen op {expires}",
+    }
+
 
 TERMS = {
     "batch": (
@@ -205,8 +266,11 @@ def apply_plugin_form(cfg: dict, form: dict) -> dict:
             cfg[name] = section
     on = {n for n in PLUGINS if form.get(f"on:{n}")} | ALWAYS_ON
     for name, key in NEEDS_CREDENTIAL.items():
-        if not (cfg.get(name) or {}).get(key):
-            on.discard(name)
+        value = (cfg.get(name) or {}).get(key)
+        if not value or (
+            name == "beatport4" and not beatport_token_status(cfg)["ok"]
+        ):
+            on.discard(name)  # never let a plugin prompt inside a quiet batch
     others = [n for n in enabled_plugins(cfg) if n not in PLUGINS]
     cfg["plugins"] = others + [n for n in PLUGINS if n in on]
     return cfg
@@ -270,8 +334,23 @@ def parse_line(line: str, batch: set[str], current: str) -> str:
         STATE["added"] = len(STATE["added_paths"])
         label = stripped.removeprefix("Tagging track:").strip()
         if label.startswith("Importing as-is"):
-            label = "toegevoegd met bestaande tags"
+            label = "geen sterke online match: toegevoegd met eigen tags"
         _event("added", label, Path(current).name)
+    elif stripped.startswith("Error in '"):
+        plugin = stripped.split("'")[1].split(".")[0]
+        _event(
+            "warn", f"bron {plugin}: fout, overgeslagen voor dit bestand", ""
+        )
+    elif stripped.startswith("Could not fetch token") or (
+        stripped.startswith("beatport4:")
+        and any(
+            w in stripped.lower()
+            for w in ("error", "fail", "token", "401", "403")
+        )
+    ):
+        _event("warn", "Beatport: inloggen mislukt, bron levert niets", "")
+    elif stripped.startswith("** error loading plugin"):
+        _event("warn", stripped.removeprefix("** ").capitalize(), "")
     elif (
         "error" in stripped.lower()
         and current
@@ -281,21 +360,46 @@ def parse_line(line: str, batch: set[str], current: str) -> str:
     return current
 
 
-def _run(batch_size: int, loop: bool) -> None:
+def _run(batch_size: int, loop: bool, rematch: bool = False) -> None:
     try:
         while not STATE["stop"]:
-            files = [f for f in inbox_files() if f not in STATE["attempted"]]
-            batch = files[:batch_size]
+            if rematch:
+                batch = unmatched_paths()
+                loop = False
+                label = f"opnieuw matchen van {len(batch)} nummers"
+            else:
+                files = [
+                    f for f in inbox_files() if f not in STATE["attempted"]
+                ]
+                batch = files[:batch_size]
+                label = f"batch van {len(batch)} bestanden gestart"
             if not batch:
                 break
             STATE["attempted"].update(batch)
             STATE["current"] = [f.name for f in batch]
-            _event("batch", f"batch van {len(batch)} bestanden gestart")
-            STATE["log"].append(f"--- batch van {len(batch)} bestanden ---")
+            _event("batch", label)
+            STATE["log"].append(f"--- {label} ---")
             cmd = [sys.executable, "-m", "beets"]
             if config_path().exists():
                 cmd += ["-c", str(config_path())]
-            cmd += ["import", "-s", "-q", *map(str, batch)]
+            # an expired Beatport token would make the plugin prompt and
+            # abort the quiet import: drop it from this run's plugin list
+            cfg = load_yaml()
+            plugs = enabled_plugins(cfg)
+            if "beatport4" in plugs and not beatport_token_status(cfg)["ok"]:
+                plugs.remove("beatport4")
+                _event(
+                    "warn", "Beatport-token verlopen: bron uit voor deze run"
+                )
+            if plugs:
+                cmd += ["-p", ",".join(plugs)]
+            cmd += ["import", "-s", "-q"]
+            # re-import from the library by query; the files stay where they are
+            cmd += (
+                ["-L", "match_source:none"]
+                if rematch
+                else list(map(str, batch))
+            )
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -322,27 +426,32 @@ def _run(batch_size: int, loop: bool) -> None:
         _event("batch", "gestopt" if STATE["stop"] else "klaar")
 
 
-def start_run(batch_size: int, loop: bool, reset: bool) -> bool:
+def start_run(
+    batch_size: int, loop: bool, reset: bool, rematch: bool = False
+) -> bool:
     with _lock:
         if STATE["status"] == "running":
             return False
         if reset:
             STATE["attempted"].clear()
             STATE["skipped"].clear()
+        pending = (
+            unmatched_paths()
+            if rematch
+            else [f for f in inbox_files() if f not in STATE["attempted"]]
+        )
         STATE.update(
             status="running",
             stop=False,
             done=0,
             added=0,
             added_paths=set(),
-            total=len(
-                [f for f in inbox_files() if f not in STATE["attempted"]]
-            ),
+            total=len(pending),
             started_at=time.time(),
             finished_at=None,
         )
         threading.Thread(
-            target=_run, args=(max(1, batch_size), loop), daemon=True
+            target=_run, args=(max(1, batch_size), loop, rematch), daemon=True
         ).start()
         return True
 
@@ -354,6 +463,24 @@ def stop_run() -> None:
 
 
 # --- library --------------------------------------------------------------
+
+
+def unmatched_paths() -> list[Path]:
+    lib = app.config.get("lib")
+    if lib is None:
+        return []
+    return [Path(str(i.filepath)) for i in lib.items("match_source:none")]
+
+
+def edm_sources_active(cfg: dict | None = None) -> list[str]:
+    """EDM metadata sources that are enabled *and* have credentials."""
+    cfg = load_yaml() if cfg is None else cfg
+    on = set(enabled_plugins(cfg))
+    return [
+        n
+        for n in EDM_SOURCES
+        if n in on and (cfg.get(n) or {}).get(NEEDS_CREDENTIAL[n])
+    ]
 
 
 def recent_tracks(limit: int = 12) -> list[dict]:
@@ -368,6 +495,9 @@ def recent_tracks(limit: int = 12) -> list[dict]:
                 "id": item.id,
                 "artist": item.artist,
                 "title": item.title,
+                "source": item.get("match_source")
+                or item.get("data_source")
+                or "",
                 "key": key,
                 "camelot": item.get("camelot_key") or "",
                 "bpm": item.bpm or "",
@@ -402,6 +532,8 @@ def status_payload() -> dict:
         "finished_at": s["finished_at"],
         "inbox_count": len(inbox_files()),
         "library_count": library_count(),
+        "unmatched_count": len(unmatched_paths()),
+        "edm_sources": edm_sources_active(),
         "events": list(s["events"]),
         "log": "\n".join(s["log"]),
         "recent": recent_tracks(),
@@ -446,6 +578,28 @@ def api_stop() -> flask.Response:
     return flask.jsonify(status_payload())
 
 
+@app.route("/api/test/<plugin>", methods=["POST"])
+def api_test(plugin: str) -> flask.Response:
+    """Connection test with the settings from the form, saved or not; falls
+    back to the stored values for fields left empty (secrets)."""
+    from . import connect
+
+    settings = dict(load_yaml().get(plugin) or {})
+    settings.update(flask.request.get_json(silent=True) or {})
+    if plugin == "beatport4" and not settings.get("token_json"):
+        path = beatport_token_file()
+        if path.exists():
+            settings["token_json"] = path.read_text(encoding="utf-8")
+    return flask.jsonify(connect.run_test(plugin, settings))
+
+
+@app.route("/api/rematch", methods=["POST"])
+def api_rematch() -> flask.Response:
+    """Re-import every item imported without an online match."""
+    started = start_run(1, False, False, rematch=True)
+    return flask.jsonify(started=started, **status_payload())
+
+
 @app.route("/api/retry", methods=["POST"])
 def api_retry() -> flask.Response:
     data = flask.request.get_json(silent=True) or flask.request.form
@@ -483,7 +637,19 @@ def art(item_id: int) -> flask.Response:
 def plugins_page() -> str:
     cfg = load_yaml()
     saved = None
+    token_error = None
     if flask.request.method == "POST":
+        pasted = (flask.request.form.get(BEATPORT_TOKEN_FIELD) or "").strip()
+        if pasted:
+            try:
+                data = parse_beatport_token(pasted)
+                path = Path(config.config_dir()) / "beatport_token.json"
+                path.write_text(json.dumps(data), encoding="utf-8")
+                section = cfg.get("beatport4") or {}
+                section["tokenfile"] = str(path)
+                cfg["beatport4"] = section
+            except ValueError as e:
+                token_error = str(e)
         cfg = apply_plugin_form(cfg, flask.request.form)
         save_yaml(cfg)
         saved = time.strftime("%H:%M")
@@ -501,8 +667,18 @@ def plugins_page() -> str:
         path=config_path(),
         always_on=ALWAYS_ON,
         needs_credential=NEEDS_CREDENTIAL,
+        edm_sources=edm_sources_active(cfg),
+        testable=set(connect_tests()),
+        beatport_token=beatport_token_status(cfg),
+        token_error=token_error,
         terms=TERMS,
     )
+
+
+def connect_tests() -> dict:
+    from . import connect
+
+    return connect.TESTS
 
 
 def serve(lib: Any, host: str, port: int) -> None:

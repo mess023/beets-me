@@ -25,9 +25,17 @@ plugins:
 import:
   move: yes
   write: yes
-  # unmatched files are left in the inbox for manual handling (quiet mode)
-  quiet_fallback: skip
+  # no confident online match: import anyway with the file's own tags so the
+  # rest of the pipeline (AIFF, BPM, key, ReplayGain, month folder) still runs;
+  # such items get match_source: none and can be re-matched from the web UI
+  quiet_fallback: asis
   log: /config/import.log
+
+match:
+  # quiet mode only applies "strong" matches. A perfect singleton match scores
+  # 0.0 with the weights below; 0.10 also accepts a small title variance such
+  # as a missing "(Original Mix)" while an artist mismatch (>= 0.15) is refused.
+  strong_rec_thresh: 0.10
 
 paths:
   # "July 2025/Artist - Title (Remixer Remix).aiff"
@@ -79,4 +87,12 @@ chroma:
 
 musicbrainz:
   search_limit: 10
+  # MusicBrainz is the reference source: no data_source penalty, otherwise a
+  # perfect singleton match already scores 0.111 and is never "strong".
+  source_weight: 0.0
+
+deezer:
+  # 0.3 -> floor 0.067: a perfect Deezer match still counts as strong when
+  # MusicBrainz has nothing, but MusicBrainz wins when both match.
+  source_weight: 0.3
 

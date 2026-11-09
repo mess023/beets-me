@@ -1,3 +1,5 @@
+import pytest
+
 from beetsplug.singles import CAMELOT, key_from_chroma, month_folder
 from beetsplug.singles.ui import STATE, apply_plugin_form, parse_line
 
@@ -68,3 +70,40 @@ def test_parse_line_skip_after_asis_undoes_added():
     parse_line("Skipping.\n", batch, cur)
     assert STATE["added"] == 0
     assert STATE["skipped"]["/inbox/a.flac"] == "geen match gevonden"
+
+
+def test_parse_line_plugin_error_is_a_warning_not_a_skip():
+    STATE["events"].clear()
+    batch = {"/inbox/a.flac"}
+    cur = parse_line("/inbox/a.flac\n", batch, "")
+    parse_line(
+        "Error in 'Bandcamp.item_candidates': Expecting value: line 1\n",
+        batch,
+        cur,
+    )
+    assert STATE["events"][0]["kind"] == "warn"
+    assert "Bandcamp" in STATE["events"][0]["text"]
+
+
+def test_beatport_token_validation():
+    import json
+    import time
+
+    from beetsplug.singles.ui import parse_beatport_token
+
+    good = parse_beatport_token(
+        json.dumps(
+            {"access_token": "a", "refresh_token": "r", "expires_in": 60}
+        )
+    )
+    assert good["expires_at"] > time.time()
+    with pytest.raises(ValueError, match="refresh_token"):
+        parse_beatport_token(json.dumps({"access_token": "a"}))
+
+
+def test_apply_plugin_form_keeps_beatport_off_without_token_file():
+    out = apply_plugin_form(
+        {"beatport4": {"tokenfile": "/nonexistent/beatport_token.json"}},
+        {"on:beatport4": "1", "on:musicbrainz": "1"},
+    )
+    assert out["plugins"] == ["musicbrainz", "singles"]

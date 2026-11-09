@@ -3,6 +3,11 @@
 {% block body %}
 <div id="dash" data-state='{{ state|tojson|forceescape }}'>
 
+<div class="hint" id="edm_hint" {% if state.edm_sources %}hidden{% endif %}>
+  <strong>Beatport en Discogs staan uit.</strong> MusicBrainz en Deezer kennen weinig elektronische releases; nummers zonder match worden met hun eigen tags toegevoegd.
+  <a href="{{ url_for('plugins_page') }}">Vul een Beatport-login of Discogs-token in onder Diensten</a> en klik daarna op "opnieuw matchen".
+</div>
+
 <section class="tiles" aria-label="Status">
   <div class="tile">
     <div class="label">Inbox</div>
@@ -53,7 +58,10 @@
 
 <div class="cols">
   <section class="card" aria-labelledby="h-recent">
-    <h2 id="h-recent">Laatst toegevoegd</h2>
+    <div class="progress-head">
+      <h2 id="h-recent" style="margin:0">Laatst toegevoegd</h2>
+      <button class="btn btn--small" id="rematch" type="button" title="Importeert alle nummers zonder online metadata opnieuw via de actieve bronnen; bestanden blijven staan" hidden>opnieuw matchen (<span id="unmatched_count">0</span>)</button>
+    </div>
     <ul class="tracks" id="tracks" style="list-style:none;margin:0;padding:0"></ul>
   </section>
   <section class="card" aria-labelledby="h-skipped">

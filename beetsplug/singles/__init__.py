@@ -129,6 +129,13 @@ class SinglesPlugin(BeetsPlugin):
             self.import_stages = [self._key_stage]
         if self.config["auto_art"].get(bool):
             self.register_listener("item_imported", self._singleton_art)
+        self.register_listener("item_imported", self._mark_source)
+
+    def _mark_source(self, lib: Library, item: Item) -> None:
+        """Record where the metadata came from; 'none' = imported as-is, so
+        the web UI can show it and offer a re-match later."""
+        item.match_source = item.get("data_source") or "none"
+        item.store()
 
     def commands(self) -> list:
         from beets import ui as beets_ui

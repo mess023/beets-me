@@ -78,7 +78,11 @@
     if (running) { batchInput.disabled = true; loopInput.disabled = true; resetInput.disabled = true; }
     renderButton();
 
-    setList($("tracks"), JSON.stringify(s.recent.map((t) => [t.id, t.key, t.bpm])), s.recent.length ? s.recent.map((t) => `
+    $("edm_hint").hidden = s.edm_sources.length > 0;
+    $("unmatched_count").textContent = s.unmatched_count;
+    $("rematch").hidden = !s.unmatched_count;
+    $("rematch").disabled = running;
+    setList($("tracks"), JSON.stringify(s.recent.map((t) => [t.id, t.key, t.bpm, t.source])), s.recent.length ? s.recent.map((t) => `
       <li class="track">
         <img src="/art/${t.id}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;cover--none&quot; aria-hidden=&quot;true&quot;>♪</div>'">
         <div>
@@ -89,6 +93,7 @@
             ${t.bpm ? `<span class="chip chip--bpm">${esc(t.bpm)} BPM</span>` : ""}
             <span class="chip">${esc(t.format)}${t.bitdepth ? " " + esc(t.bitdepth) + "-bit" : ""}</span>
             <span class="chip" title="maandmap">${esc(t.folder)}</span>
+            ${t.source === "none" ? `<span class="chip chip--none"><abbr title="Geen sterke online match gevonden; eigen tags van het bestand gebruikt. Klik op 'opnieuw matchen' zodra Beatport of Discogs aanstaat." tabindex="0">zonder online metadata</abbr></span>` : (t.source ? `<span class="chip" title="metadatabron">${esc(t.source)}</span>` : "")}
           </div>
         </div>
       </li>`).join("") : `<li class="muted">Nog niets in de bibliotheek.</li>`);
@@ -101,7 +106,7 @@
     $("retry_all").disabled = running;
     $("skipped_count").textContent = s.skipped.length;
 
-    const icons = { added: "✓", skipped: "⚠", error: "✖", batch: "▶" };
+    const icons = { added: "✓", skipped: "⚠", warn: "·", error: "✖", batch: "▶" };
     $("events_count").textContent = s.events.length;
     setList($("events"), String(s.events.length) + (s.events[0] ? s.events[0].t + s.events[0].text : ""), s.events.length ? s.events.map((e) => `
       <li class="ev-${e.kind}"><span class="t">${e.t}</span><span class="i" aria-hidden="true">${icons[e.kind] || "·"}</span>
@@ -126,6 +131,7 @@
   });
   $("skipped").addEventListener("click", (e) => { const b = e.target.closest("[data-retry]"); if (b) post("/api/retry", { path: b.dataset.retry }); });
   $("retry_all").addEventListener("click", () => post("/api/retry", {}));
+  $("rematch").addEventListener("click", () => post("/api/rematch", {}).then(() => { $("events_panel").open = true; }));
 
   async function poll() {
     try {
